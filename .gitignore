@@ -73,3 +73,13 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Python / FastAPI backend
+__pycache__/
+*.py[cod]
+.kasi_env/
+venv/
+.pytest_cache/
+.env
+.env.*
+!.env.example
