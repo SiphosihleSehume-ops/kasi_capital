@@ -1,0 +1,17 @@
+services:
+  metro:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: kasi-capital-metro
+    ports:
+      - "8081:8081"
+    volumes:
+      # Live-reload the source into the container during development
+      - .:/app
+      # Keep node_modules inside the image (not overwritten by the bind mount)
+      - /app/node_modules
+    environment:
+      - REACT_NATIVE_PACKAGER_HOSTNAME=localhost
+    stdin_open: true
+    tty: true
