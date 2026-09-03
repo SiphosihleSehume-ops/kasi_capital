@@ -17,6 +17,7 @@ Router.register('ai-coach', {
           </div>
         </div>
 
+        <!-- Daily topic card -->
         <div class="bg-surface-white rounded-xl shadow-sm p-gutter flex flex-col gap-stack-sm relative overflow-hidden group hover:shadow-md transition-shadow">
           <div class="absolute -right-10 -top-10 w-32 h-32 bg-primary-container/20 rounded-full blur-xl pointer-events-none"></div>
           <div class="flex justify-between items-start">
@@ -39,6 +40,7 @@ Router.register('ai-coach', {
           </button>
         </div>
 
+        <!-- Literacy journey -->
         <div class="flex flex-col gap-stack-sm">
           <div class="flex justify-between items-end mb-1">
             <span class="font-headline-sm text-on-surface">Literacy Journey</span>
@@ -77,13 +79,14 @@ Router.register('ai-coach', {
           </div>
         </div>
 
+        <!-- Chat messages -->
         <div class="flex flex-col gap-stack-sm pb-10" id="chat-messages">
           <div class="flex items-end gap-2 w-[85%]">
             <div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 shadow-sm">
               <span class="material-symbols-outlined text-[16px] text-on-secondary-fixed">psychology</span>
             </div>
             <div class="bg-surface-white rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-1 text-body-md text-on-surface relative">
-              Sawubona! Hello! I'm Lesedi. I can help you understand how to grow your Stokvel funds. What would you like to learn today?
+              Sawubona! Hello! I'm Lesedi, powered by Kasi Capital's AI. I can help you understand how to grow your Stokvel funds. What would you like to learn today?
             </div>
           </div>
           <div class="flex flex-wrap gap-2 ml-10 mt-2" id="chat-chips">
@@ -93,10 +96,14 @@ Router.register('ai-coach', {
             <button class="chip-btn bg-surface-white text-on-surface-variant font-label-md px-4 py-2 rounded-full shadow-sm active:scale-95 transition-transform border border-border-soft hover:bg-surface-container transition-colors" data-message="How does compound interest work?">
               Compound Interest
             </button>
+            <button class="chip-btn bg-surface-white text-on-surface-variant font-label-md px-4 py-2 rounded-full shadow-sm active:scale-95 transition-transform border border-border-soft hover:bg-surface-container transition-colors" data-message="What is a Stokvel and how does it work?">
+              Stokvels explained
+            </button>
           </div>
         </div>
       </div>
 
+      <!-- Input bar -->
       <div class="bg-surface-white/90 backdrop-blur-md p-gutter border-t border-border-soft flex gap-2 items-center z-10 shrink-0 pb-safe">
         <div class="relative flex-1">
           <select class="absolute left-3 top-1/2 -translate-y-1/2 bg-transparent text-secondary font-label-md outline-none appearance-none cursor-pointer z-10 pr-4" id="language-select">
@@ -108,7 +115,7 @@ Router.register('ai-coach', {
           <div class="absolute left-10 top-1/2 -translate-y-1/2 pointer-events-none text-secondary">
             <span class="material-symbols-outlined text-[16px]">expand_more</span>
           </div>
-          <input class="w-full bg-surface-container-low rounded-full py-3 pl-16 pr-12 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50 placeholder:text-on-surface-variant/70 shadow-inner" id="chat-input" placeholder="Ask a question..." type="text"/>
+          <input class="w-full bg-surface-container-low rounded-full py-3 pl-16 pr-12 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50 placeholder:text-on-surface-variant/70 shadow-inner" id="chat-input" placeholder="Ask a question…" type="text"/>
         </div>
         <button class="w-12 h-12 bg-secondary rounded-full flex items-center justify-center text-surface-white shadow-md active:scale-95 transition-transform shrink-0 hover:bg-on-secondary-fixed-variant" id="send-btn">
           <span class="material-symbols-outlined ml-1">send</span>
@@ -117,10 +124,13 @@ Router.register('ai-coach', {
     </div>
   `,
   init: () => {
-    const chatMessages = document.getElementById('chat-messages');
-    const chatInput = document.getElementById('chat-input');
+    const chatMessages  = document.getElementById('chat-messages');
+    const chatInput     = document.getElementById('chat-input');
     const chatContainer = document.getElementById('chat-container');
-    const languageSelect = document.getElementById('language-select');
+    const languageSelect= document.getElementById('language-select');
+
+    // Conversation history sent to the Invest API AI endpoint
+    const conversationHistory = [];
 
     function scrollToBottom() {
       chatContainer.scrollTo({ top: chatContainer.scrollHeight, behavior: 'smooth' });
@@ -130,79 +140,104 @@ Router.register('ai-coach', {
       const msgDiv = document.createElement('div');
       msgDiv.className = `flex items-end gap-2 ${isUser ? 'w-[85%] self-end flex-row-reverse' : 'w-[85%]'} animate-pop-in opacity-0`;
 
-      let avatarHtml = '';
-      let bubbleClass = '';
+      const bubbleClass = isUser
+        ? 'bg-secondary text-on-secondary rounded-2xl rounded-br-none p-3 shadow-sm text-body-md'
+        : 'bg-surface-white text-on-surface rounded-2xl rounded-bl-none p-3 shadow-sm text-body-md';
 
-      if (isUser) {
-        bubbleClass = 'bg-secondary text-on-secondary rounded-2xl rounded-br-none p-3 shadow-sm flex flex-col gap-1 text-body-md';
-      } else {
-        avatarHtml = `<div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 shadow-sm"><span class="material-symbols-outlined text-[16px] text-on-secondary-fixed">psychology</span></div>`;
-        bubbleClass = 'bg-surface-white text-on-surface rounded-2xl rounded-bl-none p-3 shadow-sm flex flex-col gap-1 text-body-md relative';
-      }
+      const avatarHtml = isUser ? '' : `
+        <div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 shadow-sm">
+          <span class="material-symbols-outlined text-[16px] text-on-secondary-fixed">psychology</span>
+        </div>`;
 
       const bubble = document.createElement('div');
       bubble.className = bubbleClass;
       bubble.textContent = text;
 
-      if (avatarHtml) {
-        msgDiv.insertAdjacentHTML('beforeend', avatarHtml);
-      }
+      if (avatarHtml) msgDiv.insertAdjacentHTML('beforeend', avatarHtml);
       msgDiv.appendChild(bubble);
-
       chatMessages.appendChild(msgDiv);
 
       if (isUser) {
-        const chips = document.getElementById('chat-chips');
-        if (chips) chips.remove();
+        document.getElementById('chat-chips')?.remove();
         chatInput.value = '';
       }
-
       setTimeout(scrollToBottom, 50);
     }
 
-    function handleSend(presetText) {
+    function showTyping() {
+      const id = `typing-${Date.now()}`;
+      const div = document.createElement('div');
+      div.id = id;
+      div.className = 'flex items-end gap-2 w-[85%] animate-pop-in opacity-0';
+      div.innerHTML = `
+        <div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 shadow-sm">
+          <span class="material-symbols-outlined text-[16px] text-on-secondary-fixed">psychology</span>
+        </div>
+        <div class="bg-surface-white text-on-surface rounded-2xl rounded-bl-none p-3 shadow-sm flex gap-1 items-center h-10">
+          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay:0ms"></div>
+          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay:150ms"></div>
+          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay:300ms"></div>
+        </div>`;
+      chatMessages.appendChild(div);
+      setTimeout(scrollToBottom, 50);
+      return id;
+    }
+
+    async function handleSend(presetText) {
       const text = (presetText !== undefined ? presetText : chatInput.value).trim();
       if (!text) return;
 
       addMessage(text, true);
+      conversationHistory.push({ role: 'user', content: text });
 
-      const typingId = 'typing-' + Date.now();
-      const typingDiv = document.createElement('div');
-      typingDiv.id = typingId;
-      typingDiv.className = 'flex items-end gap-2 w-[85%] animate-pop-in opacity-0';
-      typingDiv.innerHTML = `
-        <div class="w-8 h-8 rounded-full bg-secondary-fixed flex items-center justify-center shrink-0 shadow-sm"><span class="material-symbols-outlined text-[16px] text-on-secondary-fixed">psychology</span></div>
-        <div class="bg-surface-white text-on-surface rounded-2xl rounded-bl-none p-3 shadow-sm flex gap-1 items-center h-10">
-          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay: 0ms"></div>
-          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay: 150ms"></div>
-          <div class="w-2 h-2 bg-on-surface-variant/50 rounded-full animate-bounce" style="animation-delay: 300ms"></div>
-        </div>
-      `;
-      chatMessages.appendChild(typingDiv);
-      setTimeout(scrollToBottom, 50);
+      const typingId = showTyping();
 
-      setTimeout(() => {
+      try {
+        const lang   = languageSelect.value;
+        const langLabel = { en:'English', zu:'isiZulu', xh:'isiXhosa', st:'Sesotho' }[lang] || 'English';
+
+        // Call the Invest API's AI-coach endpoint
+        const data = await API.investFetch(`${API.invest.base}/v1/ai-coach/chat`, {
+          method: 'POST',
+          body: JSON.stringify({
+            messages: conversationHistory,
+            language: langLabel,
+          }),
+        });
+
         document.getElementById(typingId)?.remove();
-        const lang = languageSelect.value;
-        let response = "That's a great question! Based on your Stokvel goals, growing your money takes time and consistency.";
+        const reply = data.reply || data.message || 'Sorry, I could not get a response right now.';
+        conversationHistory.push({ role: 'assistant', content: reply });
+        addMessage(reply, false);
+      } catch (_) {
+        // Fallback: local rule-based response so the coach never goes silent
+        document.getElementById(typingId)?.remove();
+        const fallback = localFallback(text, languageSelect.value);
+        conversationHistory.push({ role: 'assistant', content: fallback });
+        addMessage(fallback, false);
+      }
+    }
 
-        if (lang === 'zu') response = "Lowo ngumbuzo omuhle! Ngokusekelwe ezinhlosweni zakho ze-Stokvel, ukukhulisa imali yakho kuthatha isikhathi nokungaguquguquki.";
-        if (text.toLowerCase().includes('etf')) {
-          response = "An ETF (Exchange Traded Fund) is a basket of securities you buy or sell through a brokerage firm on a stock exchange. It's a great way for Stokvels to diversify!";
-          if (lang === 'zu') response = "I-ETF iyinqolobane yezibambiso oyithenga noma oyithengisa ngenkampani edayisayo e-stock exchange. Yindlela enhle yokuthi ama-Stokvel andise amathuba!";
-        }
-
-        addMessage(response, false);
-      }, 1500);
+    function localFallback(text, lang) {
+      const t = text.toLowerCase();
+      if (t.includes('etf')) {
+        if (lang === 'zu') return 'I-ETF iyinqolobane yezibambiso oyithenga noma oyithengisa ngenkampani edayisayo. Yindlela enhle yokuthi ama-Stokvel andise amathuba!';
+        return 'An ETF (Exchange Traded Fund) is a basket of securities you buy and sell on a stock exchange — a great way for Stokvels to diversify!';
+      }
+      if (t.includes('stokvel')) {
+        return 'A Stokvel is a communal savings club common in South Africa. Members contribute regularly and take turns receiving the pooled sum. Kasi Capital modernises this with transparent tracking and investment options.';
+      }
+      if (t.includes('compound')) {
+        return 'Compound interest means you earn interest on your interest. The earlier you start saving, the more powerful compounding becomes — even small monthly contributions grow significantly over time!';
+      }
+      if (lang === 'zu') return 'Lombuzo muhle! Ukuphatha imali yakho kahle kuthatha isikhathi nokungaguquguquki. Ngingakusiza kanjani namuhla?';
+      return "Great question! Financial growth takes time and consistency. Ask me about ETFs, compound interest, or Stokvel strategies — I'm here to help!";
     }
 
     document.getElementById('send-btn').addEventListener('click', () => handleSend());
-    chatInput.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') handleSend();
-    });
+    chatInput.addEventListener('keypress', e => { if (e.key === 'Enter') handleSend(); });
     document.getElementById('etf-topic-btn').addEventListener('click', () => handleSend('Tell me more about ETFs'));
-
-    document.querySelectorAll('.chip-btn').forEach((chip) => {
+    document.querySelectorAll('.chip-btn').forEach(chip => {
       chip.addEventListener('click', () => handleSend(chip.dataset.message));
     });
   }
