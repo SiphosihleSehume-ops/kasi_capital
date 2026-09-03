@@ -107,17 +107,17 @@ Router.register('dashboard', {
       </div>
 
       <!-- Action Buttons -->
-      <div class="flex gap-gutter overflow-x-auto snap-x snap-mandatory pb-2 hide-scrollbar">
-        <button id="deposit-btn" class="snap-start shrink-0 flex items-center justify-center gap-2 bg-primary-container text-on-primary-container font-label-md px-6 py-4 rounded-lg w-[45%] active:scale-95 transition-transform">
+      <div class="grid grid-cols-2 gap-gutter">
+        <button id="deposit-btn" class="flex items-center justify-center gap-2 bg-primary-container text-on-primary-container font-label-md px-6 py-4 rounded-xl active:scale-95 transition-transform">
           <span class="material-symbols-outlined">add_circle</span> Deposit
         </button>
-        <button id="withdraw-btn" class="snap-start shrink-0 flex items-center justify-center gap-2 bg-surface-white border border-border-soft text-on-surface font-label-md px-6 py-4 rounded-lg w-[45%] active:scale-95 transition-transform">
+        <button id="withdraw-btn" class="flex items-center justify-center gap-2 bg-surface-white border border-border-soft text-on-surface font-label-md px-6 py-4 rounded-xl active:scale-95 transition-transform">
           <span class="material-symbols-outlined">payments</span> Withdraw
         </button>
-        <button id="roundup-btn" class="snap-start shrink-0 flex items-center justify-center gap-2 bg-secondary-fixed text-on-secondary-fixed font-label-md px-6 py-4 rounded-lg w-[45%] active:scale-95 transition-transform">
-          <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">savings</span> Round-Up
-        </button>
       </div>
+      <button id="roundup-btn" class="flex items-center justify-center gap-2 bg-secondary-fixed text-on-secondary-fixed font-label-md px-6 py-4 rounded-xl active:scale-95 transition-transform">
+        <span class="material-symbols-outlined" style="font-variation-settings:'FILL' 1;">savings</span> Round-Up
+      </button>
 
       <!-- Active Goals -->
       <div class="flex flex-col gap-stack-sm">
@@ -125,12 +125,11 @@ Router.register('dashboard', {
           <h2 class="font-headline-sm text-on-surface">Active Goals</h2>
           <a href="#/local-pools" class="font-label-md text-secondary">View all</a>
         </div>
-        <div class="grid grid-cols-1 gap-gutter" id="assets-list">
+        <div class="grid grid-cols-1 gap-gutter" id="pool-cards-list">
           <div class="bg-surface-white rounded-xl shadow-sm border border-border-soft p-4 flex items-center justify-center min-h-[80px]">
-            <span class="font-label-md text-on-surface-variant">Loading investments…</span>
+            <span class="font-label-md text-on-surface-variant">Loading pools…</span>
           </div>
         </div>
-        <p class="font-label-sm text-error hidden" id="assets-error"></p>
       </div>
 
       <!-- Transaction Feed -->
@@ -208,31 +207,83 @@ Router.register('dashboard', {
       } catch (_) { /* keep placeholders */ }
     }
 
-    // ── Live assets ───────────────────────────────────────────────────────────
-    async function loadAssets() {
-      try {
-        const assets = await API.investFetch(API.invest.assets);
-        const iconMap = { etf:'show_chart', bond:'account_balance', mutual_fund:'pie_chart',
-          money_market:'savings', crypto_etf:'currency_bitcoin', fixed_deposit:'lock', hedge_fund:'shield' };
-        document.getElementById('assets-list').innerHTML = assets.slice(0, 4).map(a => `
-          <div class="bg-surface-white rounded-xl shadow-sm border border-border-soft p-4 flex gap-4 items-center">
-            <div class="w-16 h-16 rounded-lg bg-surface-container flex items-center justify-center shrink-0 relative">
-              <div class="absolute inset-0 rounded-lg bg-gradient-to-br from-tertiary/20 to-transparent"></div>
-              <span class="material-symbols-outlined text-tertiary text-[28px]">${iconMap[a.type] || 'trending_up'}</span>
-            </div>
-            <div class="flex-1 min-w-0">
-              <h3 class="font-label-md text-on-surface truncate">${a.name}</h3>
-              <p class="font-label-sm text-on-surface-variant capitalize">${a.type.replace(/_/g,' ')}</p>
-              <div class="flex items-center gap-2 mt-2">
-                <span class="font-label-sm text-on-surface-variant">${a.fractional ? 'Fractional' : 'Whole units'}</span>
-                <span class="font-label-sm text-secondary ml-auto">${fmt(a.price)}</span>
+    // ── Pool cards on dashboard ────────────────────────────────────────────────
+    function loadPoolCards() {
+      const SEED_POOLS_LOCAL = {
+        'static-1': { name:'Khayelitsha Groceries', cadence:'Monthly', perMember:'R500 / member', goal:'R25,000', goalRaw:25000, members:34, maxMembers:50, pct:68, stripeColor:'bg-growth-green', barColor:'bg-growth-green' },
+        'static-2': { name:'Soweto Investors Club', cadence:'Weekly', perMember:'R250 / member', goal:'R60,000', goalRaw:60000, members:48, maxMembers:50, pct:96, stripeColor:'bg-secondary', barColor:'bg-secondary', warning:'Almost full!' },
+        'static-3': { name:'Mamelodi Education Fund', cadence:'Monthly', perMember:'R1000 / member', goal:'R50,000', goalRaw:50000, members:12, maxMembers:50, pct:24, stripeColor:'bg-outline-variant', barColor:'bg-outline' },
+      };
+
+      const userPools = PoolStore.all().map(p => ({
+        ...p,
+        stripeColor: 'bg-primary',
+        barColor: 'bg-primary',
+        badge: 'Your pool',
+      }));
+
+      const allPools = [
+        ...userPools,
+        ...Object.entries(SEED_POOLS_LOCAL).map(([id, p]) => ({ ...p, poolId: id })),
+      ];
+
+      const container = document.getElementById('pool-cards-list');
+      if (!allPools.length) {
+        container.innerHTML = `<div class="bg-surface-white rounded-xl shadow-sm border border-border-soft p-4 flex items-center justify-center min-h-[80px]">
+          <span class="font-label-md text-on-surface-variant">No active pools yet.</span>
+        </div>`;
+        return;
+      }
+
+      container.innerHTML = allPools.map(p => {
+        const poolId = p.poolId || p.id;
+        const progressPct = p.goalRaw ? Math.min(100, Math.round((p.pct / 100) * 100)) : p.pct;
+        return `
+          <div class="pool-item bg-surface-white rounded-xl shadow-sm border border-border-soft relative overflow-hidden cursor-pointer active:scale-[0.98] transition-transform" data-pool-id="${poolId}" data-name="${p.name}">
+            <div class="absolute top-0 right-0 w-2 h-full ${p.stripeColor}"></div>
+            <div class="p-4 flex flex-col gap-3">
+              <div class="flex justify-between items-start">
+                <div class="flex flex-col gap-1 min-w-0 pr-4">
+                  <div class="flex items-center gap-2">
+                    <h3 class="font-headline-sm text-on-surface truncate">${p.name}</h3>
+                    ${p.badge ? `<span class="text-[10px] font-label-sm bg-primary-container text-on-primary-container px-2 py-0.5 rounded-full shrink-0">${p.badge}</span>` : ''}
+                  </div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-secondary-container/20 text-on-secondary-container font-label-sm">
+                      <span class="w-1.5 h-1.5 rounded-full bg-secondary"></span> ${p.cadence}
+                    </span>
+                    <span class="text-on-surface-variant font-label-sm">${p.perMember}</span>
+                  </div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="font-headline-md text-secondary">${p.goal}</div>
+                  <div class="text-on-surface-variant font-label-sm">Goal</div>
+                </div>
+              </div>
+              <div class="flex items-center gap-3">
+                <div class="flex-1">
+                  <div class="flex justify-between items-end mb-1.5">
+                    <span class="font-label-sm text-on-surface-variant">${pctLabel(p)} collected</span>
+                    <span class="font-label-md text-on-surface">${p.members} <span class="text-on-surface-variant font-label-sm font-normal">/ ${p.maxMembers}</span></span>
+                  </div>
+                  <div class="w-full bg-surface-container h-2 rounded-full overflow-hidden">
+                    <div class="${p.barColor} h-full rounded-full transition-all duration-700 ease-out" style="width:${progressPct}%"></div>
+                  </div>
+                  ${p.warning ? `<p class="text-[10px] text-stokvel-red font-label-sm mt-1 text-right">${p.warning}</p>` : ''}
+                </div>
+                <span class="material-symbols-outlined text-on-surface-variant text-[20px]">chevron_right</span>
               </div>
             </div>
-          </div>`).join('');
-      } catch (err) {
-        showErr(document.getElementById('assets-error'), `Could not load investments: ${err.message}`);
+          </div>`;
+      }).join('');
+
+      function pctLabel(p) {
+        const collected = p.goalRaw ? Math.round(p.goalRaw * (p.pct / 100)) : 0;
+        return collected >= 1000 ? `R${(collected / 1000).toFixed(1)}k` : `R${collected}`;
       }
     }
+
+    loadPoolCards();
 
     // ── Transaction feed helpers ──────────────────────────────────────────────
     function prependTx(tx) {
@@ -639,8 +690,16 @@ Router.register('dashboard', {
     document.getElementById('withdraw-btn').addEventListener('click', openWithdrawModal);
 
     // ── Boot ──────────────────────────────────────────────────────────────────
-    loadAssets();
+    loadPoolCards();
     loadAccountSummary();
     TxStore.all().forEach(tx => prependTx(tx));
+
+    // ── Pool card click → detail page ───────────────────────────────────────
+    document.getElementById('pool-cards-list')?.addEventListener('click', e => {
+      const card = e.target.closest('.pool-item');
+      if (!card) return;
+      const id = card.dataset.poolId;
+      if (id) Router.navigate(`pool-detail?id=${id}`);
+    });
   }
 });
