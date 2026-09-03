@@ -4,11 +4,11 @@ from typing import Optional
 
 class PaymentRequest(BaseModel):
     amount: str
-    currency: str = "ZMW"
+    currency: str = "ZAR"
     external_id: str
     payer_message: str = "Payment for services"
     payee_note: str = "MoMo payment"
-    payer: dict  # {"partyIdType": "MSISDN", "partyId": "260XXXXXXXXX"}
+    payer: dict  # {"partyIdType": "MSISDN", "partyId": "27821234567"}  # SA format, no + prefix
 
 
 class PaymentResponse(BaseModel):
@@ -25,7 +25,7 @@ class TokenResponse(BaseModel):
 
 class RefundRequest(BaseModel):
     amount: str
-    currency: str = "ZMW"
+    currency: str = "ZAR"
     external_id: str
     payer_message: str = "Refund for services"
     payee_note: str = "MoMo refund"
@@ -44,18 +44,18 @@ class BalanceResponse(BaseModel):
 
 class PreApprovalRequest(BaseModel):
     amount: str
-    currency: str = "ZMW"
+    currency: str = "ZAR"
     external_id: str
     payer_message: str = "Pre-approval for services"
     payee_note: str = "MoMo pre-approval"
-    payer: dict  # {"partyIdType": "MSISDN", "partyId": "260XXXXXXXXX"}
+    payer: dict  # {"partyIdType": "MSISDN", "partyId": "27821234567"}  # SA format, no + prefix
 
 
 class TransferRequest(BaseModel):
     amount: str
-    currency: str = "ZMW"
+    currency: str = "ZAR"
     external_id: str
-    payee: dict  # {"partyIdType": "MSISDN", "partyId": "260XXXXXXXXX"}
+    payee: dict  # {"partyIdType": "MSISDN", "partyId": "27821234567"}  # SA format, no + prefix
     payer_message: str = "Transfer for services"
     payee_note: str = "MoMo transfer"
 

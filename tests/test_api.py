@@ -22,9 +22,9 @@ async def test_make_payment_success(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/pay", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "order-123",
-            "payer": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payer": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 200
@@ -41,9 +41,9 @@ async def test_make_payment_failure(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/pay", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "order-123",
-            "payer": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payer": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 500
@@ -54,7 +54,7 @@ async def test_get_payment_status_success(mock_mtn_client):
     mock_mtn_client.get_payment_status = AsyncMock(return_value={
         "status": "SUCCESSFUL",
         "amount": "100",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -82,12 +82,12 @@ async def test_get_account_holder_info_success(mock_mtn_client):
     mock_mtn_client.get_account_holder_info = AsyncMock(return_value={
         "financial_id": "12345",
         "name": "John Doe",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/v1/account-info/260970000000")
+        response = await client.get("/api/v1/account-info/27821234567")
 
     assert response.status_code == 200
     data = response.json()
@@ -110,7 +110,7 @@ async def test_get_account_holder_info_failure(mock_mtn_client):
 async def test_get_balance_success(mock_mtn_client):
     mock_mtn_client.get_balance = AsyncMock(return_value={
         "available_balance": "1000.00",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -120,7 +120,7 @@ async def test_get_balance_success(mock_mtn_client):
     assert response.status_code == 200
     data = response.json()
     assert data["available_balance"] == "1000.00"
-    assert data["currency"] == "ZMW"
+    assert data["currency"] == "ZAR"
 
 
 @pytest.mark.asyncio
@@ -146,7 +146,7 @@ async def test_refund_payment_success(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/refund/test-ref-id", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "refund-123",
         })
 
@@ -164,7 +164,7 @@ async def test_refund_payment_failure(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/refund/test-ref-id", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "refund-123",
         })
 
@@ -183,9 +183,9 @@ async def test_create_pre_approval_token_success(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/pre-approval", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "pre-approval-123",
-            "payer": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payer": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 200
@@ -202,9 +202,9 @@ async def test_create_pre_approval_token_failure(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/pre-approval", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "pre-approval-123",
-            "payer": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payer": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 500
@@ -222,9 +222,9 @@ async def test_transfer_success(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/transfer", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "transfer-123",
-            "payee": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payee": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 200
@@ -241,9 +241,9 @@ async def test_transfer_failure(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/transfer", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "transfer-123",
-            "payee": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payee": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 500
@@ -254,7 +254,7 @@ async def test_get_transfer_status_success(mock_mtn_client):
     mock_mtn_client.get_transfer_status = AsyncMock(return_value={
         "status": "SUCCESSFUL",
         "amount": "100",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -281,7 +281,7 @@ async def test_get_transfer_status_failure(mock_mtn_client):
 async def test_get_disbursement_balance_success(mock_mtn_client):
     mock_mtn_client.get_disbursement_balance = AsyncMock(return_value={
         "available_balance": "5000.00",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -291,7 +291,7 @@ async def test_get_disbursement_balance_success(mock_mtn_client):
     assert response.status_code == 200
     data = response.json()
     assert data["available_balance"] == "5000.00"
-    assert data["currency"] == "ZMW"
+    assert data["currency"] == "ZAR"
 
 
 @pytest.mark.asyncio
@@ -310,12 +310,12 @@ async def test_get_disbursement_account_holder_info_success(mock_mtn_client):
     mock_mtn_client.get_disbursement_account_holder_info = AsyncMock(return_value={
         "financial_id": "67890",
         "name": "Jane Doe",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
-        response = await client.get("/api/v1/disbursement-account-info/260970000000")
+        response = await client.get("/api/v1/disbursement-account-info/27821234567")
 
     assert response.status_code == 200
     data = response.json()
@@ -346,9 +346,9 @@ async def test_remittance_transfer_success(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/remittance/transfer", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "remit-123",
-            "payee": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payee": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 200
@@ -365,9 +365,9 @@ async def test_remittance_transfer_failure(mock_mtn_client):
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         response = await client.post("/api/v1/remittance/transfer", json={
             "amount": "100",
-            "currency": "ZMW",
+            "currency": "ZAR",
             "external_id": "remit-123",
-            "payee": {"partyIdType": "MSISDN", "partyId": "260970000000"},
+            "payee": {"partyIdType": "MSISDN", "partyId": "27821234567"},
         })
 
     assert response.status_code == 500
@@ -378,7 +378,7 @@ async def test_get_remittance_transfer_status_success(mock_mtn_client):
     mock_mtn_client.get_remittance_transfer_status = AsyncMock(return_value={
         "status": "SUCCESSFUL",
         "amount": "100",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -405,7 +405,7 @@ async def test_get_remittance_transfer_status_failure(mock_mtn_client):
 async def test_get_remittance_balance_success(mock_mtn_client):
     mock_mtn_client.get_remittance_balance = AsyncMock(return_value={
         "available_balance": "2500.00",
-        "currency": "ZMW",
+        "currency": "ZAR",
     })
 
     transport = ASGITransport(app=app)
@@ -415,7 +415,7 @@ async def test_get_remittance_balance_success(mock_mtn_client):
     assert response.status_code == 200
     data = response.json()
     assert data["available_balance"] == "2500.00"
-    assert data["currency"] == "ZMW"
+    assert data["currency"] == "ZAR"
 
 
 @pytest.mark.asyncio

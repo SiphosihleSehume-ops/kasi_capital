@@ -1,36 +1,105 @@
 import httpx
+import time
 import base64
 from uuid import uuid4
 from app.config import get_settings
+
+TOKEN_TTL_SECONDS = 3600  # MTN MoMo tokens expire after 3600s
 
 
 class MTNMomoClient:
     def __init__(self):
         self.settings = get_settings()
         self.base_url = self.settings.mtn_base_url
-        self.token = None
+
+        # Per-product token cache: { "collection": (token, expiry_ts), ... }
+        self._tokens: dict[str, tuple[str, float]] = {}
 
     def _get_basic_auth(self) -> str:
         credentials = f"{self.settings.mtn_api_user}:{self.settings.mtn_api_key}"
         encoded = base64.b64encode(credentials.encode()).decode()
         return f"Basic {encoded}"
 
+    # ── Token management with TTL ──────────────────────────────────────────
+
+    def _is_token_valid(self, product: str) -> bool:
+        if product not in self._tokens:
+            return False
+        token, expiry = self._tokens[product]
+        return time.time() < expiry
+
+    def _cache_token(self, product: str, token: str) -> None:
+        self._tokens[product] = (token, time.time() + TOKEN_TTL_SECONDS)
+
+    def _get_cached_token(self, product: str) -> str | None:
+        if self._is_token_valid(product):
+            return self._tokens[product][0]
+        return None
+
+    # ── Collection token (uses kasi_collections_primary_key) ────────────────
+
     async def get_access_token(self) -> str:
-        if self.token:
-            return self.token
+        cached = self._get_cached_token("collection")
+        if cached:
+            return cached
 
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 f"{self.base_url}/collection/token/",
                 headers={
                     "Authorization": self._get_basic_auth(),
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                 },
             )
             response.raise_for_status()
             data = response.json()
-            self.token = data["access_token"]
-            return self.token
+            token = data["access_token"]
+            self._cache_token("collection", token)
+            return token
+
+    # ── Disbursement token (uses kasi_kasi_disbursements_primary_key) ───────
+
+    async def get_disbursement_token(self) -> str:
+        cached = self._get_cached_token("disbursement")
+        if cached:
+            return cached
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.base_url}/disbursement/token/",
+                headers={
+                    "Authorization": self._get_basic_auth(),
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_kasi_disbursements_primary_key,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            token = data["access_token"]
+            self._cache_token("disbursement", token)
+            return token
+
+    # ── Remittance token (uses kasi_remittances_primary_key) ────────────────
+
+    async def get_remittance_token(self) -> str:
+        cached = self._get_cached_token("remittance")
+        if cached:
+            return cached
+
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                f"{self.base_url}/remittance/token/",
+                headers={
+                    "Authorization": self._get_basic_auth(),
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_remittances_primary_key,
+                },
+            )
+            response.raise_for_status()
+            data = response.json()
+            token = data["access_token"]
+            self._cache_token("remittance", token)
+            return token
+
+    # ── Collection endpoints ────────────────────────────────────────────────
 
     async def request_to_pay(self, amount: str, currency: str, external_id: str,
                               payer_message: str, payee_note: str, payer: dict) -> dict:
@@ -52,7 +121,7 @@ class MTNMomoClient:
                     "Authorization": f"Bearer {token}",
                     "X-Reference-Id": reference_id,
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                     "Content-Type": "application/json",
                 },
             )
@@ -79,7 +148,7 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                 },
             )
             response.raise_for_status()
@@ -94,7 +163,7 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                 },
             )
             response.raise_for_status()
@@ -109,7 +178,7 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                 },
             )
             response.raise_for_status()
@@ -134,7 +203,7 @@ class MTNMomoClient:
                     "Authorization": f"Bearer {token}",
                     "X-Reference-Id": refund_ref_id,
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                     "Content-Type": "application/json",
                 },
             )
@@ -173,7 +242,7 @@ class MTNMomoClient:
                     "Authorization": f"Bearer {token}",
                     "X-Reference-Id": reference_id,
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_collections_primary_key,
                     "Content-Type": "application/json",
                 },
             )
@@ -191,18 +260,7 @@ class MTNMomoClient:
                     "message": response.text,
                 }
 
-    async def get_disbursement_token(self) -> str:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/disbursement/token/",
-                headers={
-                    "Authorization": self._get_basic_auth(),
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["access_token"]
+    # ── Disbursement endpoints (uses kasi_kasi_disbursements_primary_key) ───
 
     async def transfer(self, amount: str, currency: str, external_id: str,
                        payee: dict, payer_message: str, payee_note: str) -> dict:
@@ -224,7 +282,7 @@ class MTNMomoClient:
                     "Authorization": f"Bearer {token}",
                     "X-Reference-Id": reference_id,
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_kasi_disbursements_primary_key,
                     "Content-Type": "application/json",
                 },
             )
@@ -251,7 +309,7 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_kasi_disbursements_primary_key,
                 },
             )
             response.raise_for_status()
@@ -266,7 +324,7 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_kasi_disbursements_primary_key,
                 },
             )
             response.raise_for_status()
@@ -281,24 +339,13 @@ class MTNMomoClient:
                 headers={
                     "Authorization": f"Bearer {token}",
                     "X-Target-Environment": self.settings.mtn_environment,
-                    "Ocp-Apim-Subscription-Key": self.settings.ocp_apim_subscription_key,
+                    "Ocp-Apim-Subscription-Key": self.settings.kasi_kasi_disbursements_primary_key,
                 },
             )
             response.raise_for_status()
             return response.json()
 
-    async def get_remittance_token(self) -> str:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                f"{self.base_url}/remittance/token/",
-                headers={
-                    "Authorization": self._get_basic_auth(),
-                    "Ocp-Apim-Subscription-Key": self.settings.kasi_remittances_primary_key,
-                },
-            )
-            response.raise_for_status()
-            data = response.json()
-            return data["access_token"]
+    # ── Remittance endpoints (uses kasi_remittances_primary_key) ────────────
 
     async def remittance_transfer(self, amount: str, currency: str, external_id: str,
                                    payee: dict, payer_message: str, payee_note: str) -> dict:
