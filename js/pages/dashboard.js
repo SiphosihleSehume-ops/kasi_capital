@@ -6,7 +6,7 @@ const TxStore = (() => {
   }
   function add(tx) {
     const list = all();
-    list.unshift(tx); // newest first
+    list.unshift(tx);
     sessionStorage.setItem(KEY, JSON.stringify(list.slice(0, 50)));
   }
   function update(refId, patch) {
@@ -16,37 +16,63 @@ const TxStore = (() => {
   return { all, add, update };
 })();
 
-// ─── MoMo polling helper ─────────────────────────────────────────────────────
-// Polls a status URL every `interval` ms up to `maxAttempts` times.
-// Resolves with the final status object or rejects on timeout/error.
-async function pollMomoStatus(statusUrl, { interval = 3000, maxAttempts = 10 } = {}) {
+// ─── MoMo status polling ──────────────────────────────────────────────────────
+async function pollMomoStatus(statusUrl, { interval = 4000, maxAttempts = 12 } = {}) {
   for (let i = 0; i < maxAttempts; i++) {
     await new Promise(r => setTimeout(r, interval));
     const data = await API.momoFetch(statusUrl);
     const status = (data.status || '').toUpperCase();
     if (status === 'SUCCESSFUL' || status === 'FAILED') return data;
-    // PENDING → keep polling
   }
   throw new Error('Transaction timed out — check your MoMo app to confirm.');
 }
 
-// ─── Input validation helpers ────────────────────────────────────────────────
+// ─── Input validation ─────────────────────────────────────────────────────────
 function validateMsisdn(raw) {
-  // Accept formats: +27821234567 | 27821234567 | 0821234567 | 821234567
   const digits = raw.replace(/\D/g, '');
   if (digits.length < 9 || digits.length > 15) return null;
-  // Normalise to full international digits (no "+")
   if (digits.startsWith('0') && digits.length === 10) return '27' + digits.slice(1);
   return digits;
 }
-
 function validateAmount(raw) {
   const n = parseFloat(raw);
   if (isNaN(n) || n < 1) return null;
-  return String(Math.round(n * 100) / 100); // two decimal places as string
+  return String(Math.round(n * 100) / 100);
 }
 
-// ─── Dashboard page ──────────────────────────────────────────────────────────
+// ─── Modal manager — mounts/unmounts to <body> so fixed positioning is correct ─
+const Modal = (() => {
+  function open(el) {
+    document.body.appendChild(el);
+    // Force reflow before animating
+    requestAnimationFrame(() => {
+      el.classList.remove('opacity-0');
+      el.querySelector('[data-sheet]')?.classList.remove('translate-y-full');
+    });
+  }
+  function close(el) {
+    el.querySelector('[data-sheet]')?.classList.add('translate-y-full');
+    el.classList.add('opacity-0');
+    setTimeout(() => el.remove(), 280);
+  }
+  return { open, close };
+})();
+
+// ─── Pool store (session) ─────────────────────────────────────────────────────
+const PoolStore = (() => {
+  const KEY = 'kasi_pools';
+  function all() {
+    try { return JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch { return []; }
+  }
+  function add(pool) {
+    const list = all();
+    list.unshift(pool);
+    sessionStorage.setItem(KEY, JSON.stringify(list));
+  }
+  return { all, add };
+})();
+
+// ─── Dashboard ────────────────────────────────────────────────────────────────
 Router.register('dashboard', {
   title: 'Dashboard',
   showChrome: true,
@@ -93,7 +119,7 @@ Router.register('dashboard', {
         </button>
       </div>
 
-      <!-- Active Goals (live from Invest API) -->
+      <!-- Active Goals -->
       <div class="flex flex-col gap-stack-sm">
         <div class="flex items-center justify-between">
           <h2 class="font-headline-sm text-on-surface">Active Goals</h2>
@@ -111,7 +137,6 @@ Router.register('dashboard', {
       <div class="flex flex-col gap-stack-sm mt-4">
         <h2 class="font-headline-sm text-on-surface">Recent Transactions</h2>
         <div class="flex flex-col gap-0 bg-surface-white rounded-xl shadow-sm border border-border-soft overflow-hidden" id="tx-feed">
-          <!-- Seeded with static fallback; replaced dynamically -->
           <div class="flex items-center gap-4 p-4 border-b border-border-soft">
             <div class="w-10 h-10 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center shrink-0">
               <span class="material-symbols-outlined text-[20px]">person</span>
@@ -145,188 +170,6 @@ Router.register('dashboard', {
         </div>
       </div>
 
-      <!-- ── DEPOSIT MODAL ─────────────────────────────────────────────────── -->
-      <div id="deposit-modal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
-        <div class="bg-surface-white w-full max-w-md rounded-t-2xl shadow-xl flex flex-col" id="deposit-sheet">
-
-          <!-- Step 1: Input form -->
-          <div id="dep-step-form" class="p-6 flex flex-col gap-4">
-            <div class="flex items-center justify-between">
-              <h3 class="font-headline-sm text-on-surface">Deposit via MoMo</h3>
-              <button id="deposit-close" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center">
-                <span class="material-symbols-outlined text-[18px] text-on-surface-variant">close</span>
-              </button>
-            </div>
-            <p class="font-body-md text-on-surface-variant text-sm">A payment request will be sent to your MTN MoMo number. Approve it in your MoMo app to complete the deposit.</p>
-            <label class="flex flex-col gap-1">
-              <span class="font-label-sm text-on-surface-variant">Amount (ZAR)</span>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-md text-on-surface-variant">R</span>
-                <input id="deposit-amount" type="number" min="1" step="0.01" placeholder="0.00"
-                  class="w-full bg-surface-container rounded-lg pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
-              </div>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="font-label-sm text-on-surface-variant">Your MoMo Number</span>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-sm text-on-surface-variant">+</span>
-                <input id="deposit-phone" type="tel" placeholder="27821234567"
-                  class="w-full bg-surface-container rounded-lg pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
-              </div>
-              <span class="font-label-sm text-on-surface-variant">International format, e.g. 27821234567</span>
-            </label>
-            <p class="font-label-sm text-error hidden" id="deposit-error"></p>
-            <div class="flex gap-3">
-              <button id="deposit-cancel" class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-lg active:scale-95 transition-transform">Cancel</button>
-              <button id="deposit-confirm" class="flex-1 bg-primary-container text-on-primary-container font-label-md py-3 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
-                <span class="material-symbols-outlined text-[18px]">add_circle</span> Request Payment
-              </button>
-            </div>
-          </div>
-
-          <!-- Step 2: Pending / polling -->
-          <div id="dep-step-pending" class="hidden p-6 flex flex-col items-center gap-5 py-10">
-            <div class="w-20 h-20 rounded-full bg-primary-container/30 flex items-center justify-center relative">
-              <div class="absolute inset-0 rounded-full border-4 border-primary-container border-t-primary animate-spin"></div>
-              <span class="material-symbols-outlined text-[36px] text-on-primary-container">phone_android</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Awaiting Approval</h3>
-              <p class="font-body-md text-on-surface-variant" id="dep-pending-msg">Check your MoMo app and approve the payment request.</p>
-            </div>
-            <div class="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
-              <div class="h-full bg-primary-container animate-pulse w-full rounded-full"></div>
-            </div>
-            <p class="font-label-sm text-on-surface-variant" id="dep-ref-display"></p>
-            <button id="dep-cancel-poll" class="font-label-md text-on-surface-variant underline text-sm mt-2">Cancel</button>
-          </div>
-
-          <!-- Step 3: Success -->
-          <div id="dep-step-success" class="hidden p-6 flex flex-col items-center gap-4 py-10">
-            <div class="w-20 h-20 rounded-full bg-growth-green/20 flex items-center justify-center">
-              <span class="material-symbols-outlined text-[48px] text-growth-green" style="font-variation-settings:'FILL' 1;">check_circle</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Deposit Successful!</h3>
-              <p class="font-body-md text-on-surface-variant" id="dep-success-msg"></p>
-            </div>
-            <p class="font-label-sm text-on-surface-variant bg-surface-container px-4 py-2 rounded-full" id="dep-success-ref"></p>
-            <button id="dep-done" class="w-full bg-primary-container text-on-primary-container font-label-md py-3 rounded-lg mt-2 active:scale-95 transition-transform">Done</button>
-          </div>
-
-          <!-- Step 4: Failed -->
-          <div id="dep-step-failed" class="hidden p-6 flex flex-col items-center gap-4 py-10">
-            <div class="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center">
-              <span class="material-symbols-outlined text-[48px] text-error" style="font-variation-settings:'FILL' 1;">cancel</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Payment Failed</h3>
-              <p class="font-body-md text-on-surface-variant" id="dep-fail-msg">The payment was declined or timed out.</p>
-            </div>
-            <div class="flex gap-3 w-full mt-2">
-              <button id="dep-retry" class="flex-1 bg-primary-container text-on-primary-container font-label-md py-3 rounded-lg active:scale-95 transition-transform">Try Again</button>
-              <button id="dep-fail-close" class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-lg active:scale-95 transition-transform">Close</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- ── WITHDRAW MODAL ────────────────────────────────────────────────── -->
-      <div id="withdraw-modal" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-black/40 backdrop-blur-sm">
-        <div class="bg-surface-white w-full max-w-md rounded-t-2xl shadow-xl flex flex-col" id="withdraw-sheet">
-
-          <!-- Step 1: Input form -->
-          <div id="wdr-step-form" class="p-6 flex flex-col gap-4">
-            <div class="flex items-center justify-between">
-              <h3 class="font-headline-sm text-on-surface">Withdraw via MoMo</h3>
-              <button id="withdraw-close" class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center">
-                <span class="material-symbols-outlined text-[18px] text-on-surface-variant">close</span>
-              </button>
-            </div>
-            <p class="font-body-md text-on-surface-variant text-sm">Funds will be sent directly to the recipient's MTN MoMo wallet.</p>
-            <label class="flex flex-col gap-1">
-              <span class="font-label-sm text-on-surface-variant">Amount (ZAR)</span>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-md text-on-surface-variant">R</span>
-                <input id="withdraw-amount" type="number" min="1" step="0.01" placeholder="0.00"
-                  class="w-full bg-surface-container rounded-lg pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
-              </div>
-            </label>
-            <label class="flex flex-col gap-1">
-              <span class="font-label-sm text-on-surface-variant">Recipient MoMo Number</span>
-              <div class="relative">
-                <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-sm text-on-surface-variant">+</span>
-                <input id="withdraw-phone" type="tel" placeholder="27821234567"
-                  class="w-full bg-surface-container rounded-lg pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
-              </div>
-              <span class="font-label-sm text-on-surface-variant">International format, e.g. 27821234567</span>
-            </label>
-            <!-- Confirm amount display -->
-            <div class="bg-surface-container-low rounded-xl p-4 flex items-center justify-between hidden" id="wdr-confirm-banner">
-              <div class="flex flex-col">
-                <span class="font-label-sm text-on-surface-variant">You are sending</span>
-                <span class="font-headline-sm text-on-surface" id="wdr-confirm-amount"></span>
-              </div>
-              <div class="flex flex-col items-end">
-                <span class="font-label-sm text-on-surface-variant">To</span>
-                <span class="font-label-md text-on-surface" id="wdr-confirm-phone"></span>
-              </div>
-            </div>
-            <p class="font-label-sm text-error hidden" id="withdraw-error"></p>
-            <div class="flex gap-3">
-              <button id="withdraw-cancel" class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-lg active:scale-95 transition-transform">Cancel</button>
-              <button id="withdraw-confirm" class="flex-1 bg-secondary text-on-secondary font-label-md py-3 rounded-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
-                <span class="material-symbols-outlined text-[18px]">send</span> Send Money
-              </button>
-            </div>
-          </div>
-
-          <!-- Step 2: Pending / polling -->
-          <div id="wdr-step-pending" class="hidden p-6 flex flex-col items-center gap-5 py-10">
-            <div class="w-20 h-20 rounded-full bg-secondary/10 flex items-center justify-center relative">
-              <div class="absolute inset-0 rounded-full border-4 border-secondary/20 border-t-secondary animate-spin"></div>
-              <span class="material-symbols-outlined text-[36px] text-secondary">send</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Sending Funds</h3>
-              <p class="font-body-md text-on-surface-variant">Your transfer is being processed by MTN MoMo.</p>
-            </div>
-            <div class="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
-              <div class="h-full bg-secondary animate-pulse w-full rounded-full"></div>
-            </div>
-            <p class="font-label-sm text-on-surface-variant" id="wdr-ref-display"></p>
-          </div>
-
-          <!-- Step 3: Success -->
-          <div id="wdr-step-success" class="hidden p-6 flex flex-col items-center gap-4 py-10">
-            <div class="w-20 h-20 rounded-full bg-growth-green/20 flex items-center justify-center">
-              <span class="material-symbols-outlined text-[48px] text-growth-green" style="font-variation-settings:'FILL' 1;">check_circle</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Transfer Successful!</h3>
-              <p class="font-body-md text-on-surface-variant" id="wdr-success-msg"></p>
-            </div>
-            <p class="font-label-sm text-on-surface-variant bg-surface-container px-4 py-2 rounded-full" id="wdr-success-ref"></p>
-            <button id="wdr-done" class="w-full bg-secondary text-on-secondary font-label-md py-3 rounded-lg mt-2 active:scale-95 transition-transform">Done</button>
-          </div>
-
-          <!-- Step 4: Failed -->
-          <div id="wdr-step-failed" class="hidden p-6 flex flex-col items-center gap-4 py-10">
-            <div class="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center">
-              <span class="material-symbols-outlined text-[48px] text-error" style="font-variation-settings:'FILL' 1;">cancel</span>
-            </div>
-            <div class="flex flex-col items-center gap-1 text-center">
-              <h3 class="font-headline-sm text-on-surface">Transfer Failed</h3>
-              <p class="font-body-md text-on-surface-variant" id="wdr-fail-msg">The transfer could not be completed.</p>
-            </div>
-            <div class="flex gap-3 w-full mt-2">
-              <button id="wdr-retry" class="flex-1 bg-secondary text-on-secondary font-label-md py-3 rounded-lg active:scale-95 transition-transform">Try Again</button>
-              <button id="wdr-fail-close" class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-lg active:scale-95 transition-transform">Close</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <div class="flex items-center justify-center gap-2 mt-stack-md py-4 opacity-70">
         <span class="material-symbols-outlined text-secondary text-[18px]">verified_user</span>
         <span class="font-label-sm text-on-surface-variant">Verified by Kasi Capital Secure</span>
@@ -335,62 +178,20 @@ Router.register('dashboard', {
   `,
 
   init: async () => {
+    // ── Shared helpers ────────────────────────────────────────────────────────
+    const fmt = n => `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+    const showErr  = (el, msg) => { el.textContent = msg; el.classList.remove('hidden'); };
+    const hideErr  = el => el.classList.add('hidden');
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
-    function showErr(el, msg)  { el.textContent = msg; el.classList.remove('hidden'); }
-    function hideErr(el)       { el.classList.add('hidden'); }
-    function fmt(n)            { return `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`; }
-
-    // Switch steps within a modal sheet (show one div, hide siblings)
-    function showStep(prefix, step) {
-      ['form','pending','success','failed'].forEach(s => {
-        document.getElementById(`${prefix}-step-${s}`)?.classList.toggle('hidden', s !== step);
-      });
-    }
-
-    // Prepend a live transaction row into the tx feed
-    function prependTx(tx) {
-      const feed = document.getElementById('tx-feed');
-      const isDeposit = tx.type === 'deposit';
-      const statusColor = tx.status === 'SUCCESSFUL' ? 'text-growth-green' : tx.status === 'FAILED' ? 'text-error' : 'text-on-surface-variant';
-      const statusIcon  = tx.status === 'SUCCESSFUL' ? 'check_circle'     : tx.status === 'FAILED' ? 'cancel'   : 'schedule';
-      const sign        = isDeposit ? '+' : '-';
-      const row = document.createElement('div');
-      row.id = `tx-${tx.refId}`;
-      row.className = 'flex items-center gap-4 p-4 border-b border-border-soft animate-pop-in opacity-0';
-      row.innerHTML = `
-        <div class="w-10 h-10 rounded-full ${isDeposit ? 'bg-primary-container text-on-primary-container' : 'bg-secondary-container text-on-secondary-container'} flex items-center justify-center shrink-0">
-          <span class="material-symbols-outlined text-[20px]">${isDeposit ? 'add_circle' : 'send'}</span>
-        </div>
-        <div class="flex-1 min-w-0">
-          <p class="font-body-md text-on-surface truncate">${isDeposit ? 'Deposit' : 'Withdrawal'} · <span class="font-label-sm text-on-surface-variant">${tx.phone}</span></p>
-          <p class="font-label-sm text-on-surface-variant">${new Date().toLocaleTimeString('en-ZA', { hour:'2-digit', minute:'2-digit' })} · <span class="${statusColor} flex-inline items-center gap-0.5"><span class="material-symbols-outlined text-[13px] align-middle">${statusIcon}</span> ${tx.status}</span></p>
-        </div>
-        <div class="font-label-md ${statusColor} shrink-0">${sign}${fmt(tx.amount)}</div>
-      `;
-      feed.prepend(row);
-    }
-
-    function updateTxRow(refId, status) {
-      const row = document.getElementById(`tx-${refId}`);
-      if (!row) return;
-      const statusColor = status === 'SUCCESSFUL' ? 'text-growth-green' : 'text-error';
-      const statusIcon  = status === 'SUCCESSFUL' ? 'check_circle'      : 'cancel';
-      const statusEl = row.querySelector('.font-label-sm span');
-      if (statusEl) statusEl.outerHTML = `<span class="${statusColor}"><span class="material-symbols-outlined text-[13px] align-middle">${statusIcon}</span> ${status}</span>`;
-      const amtEl = row.querySelector('.font-label-md');
-      if (amtEl) { amtEl.className = amtEl.className.replace(/text-\S+/, '').trim() + ` font-label-md ${statusColor} shrink-0`; }
-    }
-
-    // ── Round-up button ───────────────────────────────────────────────────────
+    // ── Round-up animation ────────────────────────────────────────────────────
     document.getElementById('roundup-btn').addEventListener('click', () => {
       const icon = document.querySelector('#roundup-btn .material-symbols-outlined');
       icon.style.transform = 'scale(1.2)';
-      icon.style.transition = 'transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)';
+      icon.style.transition = 'transform 0.2s cubic-bezier(0.175,0.885,0.32,1.275)';
       setTimeout(() => { icon.style.transform = 'scale(1)'; }, 200);
     });
 
-    // ── Load live account summary ─────────────────────────────────────────────
+    // ── Portfolio summary ─────────────────────────────────────────────────────
     async function loadAccountSummary() {
       const accountId = sessionStorage.getItem('kasi_account_id');
       if (!accountId) return;
@@ -403,21 +204,21 @@ Router.register('dashboard', {
         document.getElementById('portfolio-cash').textContent   = `Cash: ${fmt(cash)}`;
         const plSign = pl >= 0 ? '+' : '−';
         document.getElementById('portfolio-pl').textContent = `${plSign}${fmt(Math.abs(pl))} P&L`;
-        const pct = Math.min(100, Math.round((equity / 200000) * 100));
-        document.getElementById('portfolio-bar').style.width = `${pct}%`;
+        document.getElementById('portfolio-bar').style.width = `${Math.min(100, Math.round((equity / 200000) * 100))}%`;
       } catch (_) { /* keep placeholders */ }
     }
 
-    // ── Load live assets ──────────────────────────────────────────────────────
+    // ── Live assets ───────────────────────────────────────────────────────────
     async function loadAssets() {
       try {
         const assets = await API.investFetch(API.invest.assets);
-        const list = document.getElementById('assets-list');
-        list.innerHTML = assets.slice(0, 4).map(a => `
+        const iconMap = { etf:'show_chart', bond:'account_balance', mutual_fund:'pie_chart',
+          money_market:'savings', crypto_etf:'currency_bitcoin', fixed_deposit:'lock', hedge_fund:'shield' };
+        document.getElementById('assets-list').innerHTML = assets.slice(0, 4).map(a => `
           <div class="bg-surface-white rounded-xl shadow-sm border border-border-soft p-4 flex gap-4 items-center">
             <div class="w-16 h-16 rounded-lg bg-surface-container flex items-center justify-center shrink-0 relative">
-              <div class="absolute inset-0 bg-gradient-to-br from-tertiary/20 to-transparent rounded-lg"></div>
-              <span class="material-symbols-outlined text-tertiary text-[28px]">${assetIcon(a.type)}</span>
+              <div class="absolute inset-0 rounded-lg bg-gradient-to-br from-tertiary/20 to-transparent"></div>
+              <span class="material-symbols-outlined text-tertiary text-[28px]">${iconMap[a.type] || 'trending_up'}</span>
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="font-label-md text-on-surface truncate">${a.name}</h3>
@@ -433,213 +234,413 @@ Router.register('dashboard', {
       }
     }
 
-    function assetIcon(type) {
-      return ({ etf:'show_chart', bond:'account_balance', mutual_fund:'pie_chart',
-        money_market:'savings', crypto_etf:'currency_bitcoin',
-        fixed_deposit:'lock', hedge_fund:'shield' })[type] || 'trending_up';
+    // ── Transaction feed helpers ──────────────────────────────────────────────
+    function prependTx(tx) {
+      const feed = document.getElementById('tx-feed');
+      if (!feed) return;
+      const isDeposit   = tx.type === 'deposit';
+      const statusColor = tx.status === 'SUCCESSFUL' ? 'text-growth-green' : tx.status === 'FAILED' ? 'text-error' : 'text-on-surface-variant';
+      const statusIcon  = tx.status === 'SUCCESSFUL' ? 'check_circle'     : tx.status === 'FAILED' ? 'cancel'     : 'schedule';
+      const sign        = isDeposit ? '+' : '−';
+      const row         = document.createElement('div');
+      row.id            = `tx-${tx.refId}`;
+      row.className     = 'flex items-center gap-4 p-4 border-b border-border-soft animate-pop-in opacity-0';
+      row.innerHTML = `
+        <div class="w-10 h-10 rounded-full ${isDeposit ? 'bg-primary-container text-on-primary-container' : 'bg-secondary-container text-on-secondary-container'} flex items-center justify-center shrink-0">
+          <span class="material-symbols-outlined text-[20px]">${isDeposit ? 'add_circle' : 'send'}</span>
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="font-body-md text-on-surface truncate">${isDeposit ? 'Deposit' : 'Withdrawal'} · <span class="font-label-sm text-on-surface-variant">+${tx.phone}</span></p>
+          <p class="font-label-sm text-on-surface-variant flex items-center gap-1" id="txstatus-${tx.refId}">
+            <span class="material-symbols-outlined text-[13px] ${statusColor}">${statusIcon}</span>
+            <span class="${statusColor}">${tx.status}</span>
+          </p>
+        </div>
+        <div class="font-label-md ${statusColor} shrink-0" id="txamt-${tx.refId}">${sign}${fmt(tx.amount)}</div>`;
+      feed.prepend(row);
     }
 
-    // ── DEPOSIT FLOW ──────────────────────────────────────────────────────────
-    const depositModal = document.getElementById('deposit-modal');
-
-    function openDeposit()  { depositModal.classList.remove('hidden'); showStep('dep','form'); }
-    function closeDeposit() { depositModal.classList.add('hidden'); }
-
-    document.getElementById('deposit-btn').addEventListener('click', openDeposit);
-    document.getElementById('deposit-close').addEventListener('click', closeDeposit);
-    document.getElementById('deposit-cancel').addEventListener('click', closeDeposit);
-    depositModal.addEventListener('click', e => { if (e.target === depositModal) closeDeposit(); });
-
-    // Live confirmation banner as user types
-    function updateDepBanner() {
-      // no confirm banner on deposit — just validation
+    function updateTxRow(refId, status) {
+      const statusColor = status === 'SUCCESSFUL' ? 'text-growth-green' : 'text-error';
+      const statusIcon  = status === 'SUCCESSFUL' ? 'check_circle'      : 'cancel';
+      const statusEl    = document.getElementById(`txstatus-${refId}`);
+      const amtEl       = document.getElementById(`txamt-${refId}`);
+      if (statusEl) statusEl.innerHTML = `<span class="material-symbols-outlined text-[13px] ${statusColor}">${statusIcon}</span> <span class="${statusColor}">${status}</span>`;
+      if (amtEl)    amtEl.className    = amtEl.className.replace(/text-\S+/g, '').trim() + ` font-label-md ${statusColor} shrink-0`;
     }
 
-    let depPollAbort = false;
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── MODAL BUILDER ─────────────────────────────────────────────────────────
+    // All modals are built as detached DOM nodes, appended to <body> on open,
+    // and removed on close — this guarantees fixed positioning works correctly
+    // regardless of where in the page tree the button sits.
+    // ══════════════════════════════════════════════════════════════════════════
+    function buildModal(id, content) {
+      const el = document.createElement('div');
+      el.id = id;
+      // Overlay: covers full viewport
+      el.className = 'fixed inset-0 z-[100] flex items-end justify-center opacity-0 transition-opacity duration-250';
+      el.style.backgroundColor = 'rgba(0,0,0,0.5)';
+      // Sheet: slides up from bottom
+      el.innerHTML = `
+        <div data-sheet class="bg-surface-white w-full max-w-md rounded-t-2xl shadow-2xl translate-y-full transition-transform duration-280 ease-out overflow-y-auto max-h-[90dvh]">
+          ${content}
+        </div>`;
+      return el;
+    }
 
-    document.getElementById('dep-cancel-poll').addEventListener('click', () => {
-      depPollAbort = true;
-      closeDeposit();
-    });
+    // Shared step-switcher — only one step div visible at a time
+    function showStep(modal, stepId) {
+      modal.querySelectorAll('[data-step]').forEach(s => {
+        s.style.display = s.dataset.step === stepId ? 'flex' : 'none';
+      });
+    }
 
-    document.getElementById('dep-done').addEventListener('click', () => {
-      closeDeposit();
-      loadAccountSummary();
-    });
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── DEPOSIT MODAL ─────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    function openDepositModal() {
+      const modal = buildModal('deposit-modal', `
+        <!-- STEP: form -->
+        <div data-step="form" style="display:flex" class="flex-col gap-4 p-6">
+          <div class="flex items-center justify-between">
+            <h3 class="font-headline-sm text-on-surface">Deposit via MoMo</h3>
+            <button data-close class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center active:scale-90 transition-transform">
+              <span class="material-symbols-outlined text-[18px] text-on-surface-variant">close</span>
+            </button>
+          </div>
+          <p class="font-body-md text-on-surface-variant text-sm leading-relaxed">
+            A payment request is sent to your MTN MoMo number. Approve it in your MoMo app to complete the deposit.
+          </p>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-sm text-on-surface-variant">Amount (ZAR)</span>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-md text-on-surface-variant pointer-events-none">R</span>
+              <input data-input="amount" type="number" min="1" step="0.01" placeholder="0.00"
+                class="w-full bg-surface-container rounded-xl pl-8 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
+            </div>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-sm text-on-surface-variant">Your MoMo Number</span>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-sm text-on-surface-variant pointer-events-none">+</span>
+              <input data-input="phone" type="tel" placeholder="27821234567"
+                class="w-full bg-surface-container rounded-xl pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
+            </div>
+            <span class="font-label-sm text-on-surface-variant">International format — e.g. 27821234567</span>
+          </label>
+          <p data-err class="font-label-sm text-error hidden"></p>
+          <div class="flex gap-3 pb-2">
+            <button data-cancel class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-xl active:scale-95 transition-transform">Cancel</button>
+            <button data-submit class="flex-1 bg-primary-container text-on-primary-container font-label-md py-3 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">add_circle</span> Request Payment
+            </button>
+          </div>
+        </div>
 
-    document.getElementById('dep-retry').addEventListener('click', () => showStep('dep', 'form'));
-    document.getElementById('dep-fail-close').addEventListener('click', closeDeposit);
+        <!-- STEP: pending -->
+        <div data-step="pending" style="display:none" class="flex-col items-center gap-5 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-primary-container/30 flex items-center justify-center relative">
+            <div class="absolute inset-0 rounded-full border-4 border-primary-container/40 border-t-primary animate-spin"></div>
+            <span class="material-symbols-outlined text-[36px] text-on-primary-container">phone_android</span>
+          </div>
+          <div class="flex flex-col items-center gap-2 text-center">
+            <h3 class="font-headline-sm text-on-surface">Awaiting Approval</h3>
+            <p data-pending-msg class="font-body-md text-on-surface-variant">Check your MoMo app and approve the payment request.</p>
+          </div>
+          <div class="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
+            <div class="h-full bg-primary-container rounded-full" style="animation:shimmer 1.8s infinite;background:linear-gradient(90deg,#ffcc00 25%,#f1c100 50%,#ffcc00 75%);background-size:200% 100%"></div>
+          </div>
+          <p data-ref class="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1.5 rounded-full"></p>
+          <button data-cancel-poll class="font-label-sm text-on-surface-variant underline">Cancel</button>
+        </div>
 
-    document.getElementById('deposit-confirm').addEventListener('click', async () => {
-      const rawAmount = document.getElementById('deposit-amount').value.trim();
-      const rawPhone  = document.getElementById('deposit-phone').value.trim();
-      const errEl     = document.getElementById('deposit-error');
-      hideErr(errEl);
+        <!-- STEP: success -->
+        <div data-step="success" style="display:none" class="flex-col items-center gap-4 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-growth-green/15 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[52px] text-growth-green" style="font-variation-settings:'FILL' 1;">check_circle</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-center">
+            <h3 class="font-headline-sm text-on-surface">Deposit Successful!</h3>
+            <p data-success-msg class="font-body-md text-on-surface-variant"></p>
+          </div>
+          <p data-success-ref class="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1.5 rounded-full"></p>
+          <button data-done class="w-full bg-primary-container text-on-primary-container font-label-md py-3 rounded-xl mt-2 active:scale-95 transition-transform">Done</button>
+        </div>
 
-      // Validate
-      const amount = validateAmount(rawAmount);
-      if (!amount) { showErr(errEl, 'Please enter a valid amount (minimum R1).'); return; }
-      const phone = validateMsisdn(rawPhone);
-      if (!phone) { showErr(errEl, 'Please enter a valid international phone number, e.g. 27821234567.'); return; }
+        <!-- STEP: failed -->
+        <div data-step="failed" style="display:none" class="flex-col items-center gap-4 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[52px] text-error" style="font-variation-settings:'FILL' 1;">cancel</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-center">
+            <h3 class="font-headline-sm text-on-surface">Payment Failed</h3>
+            <p data-fail-msg class="font-body-md text-on-surface-variant">The payment was declined or timed out.</p>
+          </div>
+          <div class="flex gap-3 w-full mt-2">
+            <button data-retry class="flex-1 bg-primary-container text-on-primary-container font-label-md py-3 rounded-xl active:scale-95 transition-transform">Try Again</button>
+            <button data-close class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-xl active:scale-95 transition-transform">Close</button>
+          </div>
+        </div>
+      `);
 
-      // Step → Pending
-      showStep('dep', 'pending');
-      document.getElementById('dep-pending-msg').textContent =
-        `Approve the R${amount} payment in your MoMo app (${phone}).`;
-      depPollAbort = false;
+      const closeModal = () => Modal.close(modal);
+      modal.querySelectorAll('[data-close],[data-cancel]').forEach(b => b.addEventListener('click', closeModal));
+      modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+      modal.querySelector('[data-retry]').addEventListener('click', () => showStep(modal, 'form'));
 
-      let refId = null;
-      try {
-        // 1. Initiate payment request-to-pay
-        const body = {
-          amount,
-          currency:     'ZAR',
-          external_id:  `dep-${Date.now()}`,
-          payer_message:'Kasi Capital deposit',
-          payee_note:   'Pool contribution',
-          payer: { partyIdType: 'MSISDN', partyId: phone },
-        };
-        const initData = await API.momoFetch(API.momo.pay, { method: 'POST', body: JSON.stringify(body) });
-        refId = initData.reference_id;
-        document.getElementById('dep-ref-display').textContent = `Ref: ${refId}`;
+      let pollAbort = false;
+      modal.querySelector('[data-cancel-poll]').addEventListener('click', () => { pollAbort = true; closeModal(); });
+      modal.querySelector('[data-done]').addEventListener('click', () => { closeModal(); loadAccountSummary(); });
 
-        // Record as PENDING in store + feed
-        const tx = { type:'deposit', refId, amount, phone, status:'PENDING', ts: Date.now() };
-        TxStore.add(tx);
-        prependTx(tx);
+      modal.querySelector('[data-submit]').addEventListener('click', async () => {
+        const amtRaw   = modal.querySelector('[data-input="amount"]').value.trim();
+        const phoneRaw = modal.querySelector('[data-input="phone"]').value.trim();
+        const errEl    = modal.querySelector('[data-err]');
+        hideErr(errEl);
 
-        // 2. Poll for final status
-        const result = await pollMomoStatus(API.momo.paymentStatus(refId), {
-          interval: 4000, maxAttempts: 12,
-        });
+        const amount = validateAmount(amtRaw);
+        if (!amount) { showErr(errEl, 'Please enter a valid amount (minimum R1).'); return; }
+        const phone = validateMsisdn(phoneRaw);
+        if (!phone)  { showErr(errEl, 'Enter a valid international number — e.g. 27821234567.'); return; }
 
-        if (depPollAbort) return;
+        showStep(modal, 'pending');
+        modal.querySelector('[data-pending-msg]').textContent = `Approve the ${fmt(amount)} request in your MoMo app (${phone}).`;
+        pollAbort = false;
 
-        const finalStatus = (result.status || '').toUpperCase();
-        TxStore.update(refId, { status: finalStatus });
-        updateTxRow(refId, finalStatus);
+        let refId = null;
+        try {
+          const resp = await API.momoFetch(API.momo.pay, {
+            method: 'POST',
+            body: JSON.stringify({
+              amount,
+              currency:     'ZAR',
+              external_id:  `dep-${Date.now()}`,
+              payer_message:'Kasi Capital deposit',
+              payee_note:   'Pool contribution',
+              payer: { partyIdType:'MSISDN', partyId: phone },
+            }),
+          });
+          refId = resp.reference_id;
+          modal.querySelector('[data-ref]').textContent = `Ref: ${refId}`;
 
-        if (finalStatus === 'SUCCESSFUL') {
-          document.getElementById('dep-success-msg').textContent = `${fmt(amount)} deposited to your pool wallet.`;
-          document.getElementById('dep-success-ref').textContent = `Ref: ${refId}`;
-          showStep('dep', 'success');
-          loadAccountSummary();
-        } else {
-          document.getElementById('dep-fail-msg').textContent =
-            result.message || 'The payment was declined. Please try again.';
-          showStep('dep', 'failed');
+          const tx = { type:'deposit', refId, amount, phone, status:'PENDING', ts: Date.now() };
+          TxStore.add(tx);
+          prependTx(tx);
+
+          const result      = await pollMomoStatus(API.momo.paymentStatus(refId));
+          if (pollAbort) return;
+          const finalStatus = (result.status || '').toUpperCase();
+          TxStore.update(refId, { status: finalStatus });
+          updateTxRow(refId, finalStatus);
+
+          if (finalStatus === 'SUCCESSFUL') {
+            modal.querySelector('[data-success-msg]').textContent = `${fmt(amount)} deposited to your pool wallet.`;
+            modal.querySelector('[data-success-ref]').textContent = `Ref: ${refId}`;
+            showStep(modal, 'success');
+            loadAccountSummary();
+          } else {
+            modal.querySelector('[data-fail-msg]').textContent = result.message || 'Payment was declined.';
+            showStep(modal, 'failed');
+          }
+        } catch (err) {
+          if (pollAbort) return;
+          if (refId) { TxStore.update(refId, { status:'FAILED' }); updateTxRow(refId, 'FAILED'); }
+          modal.querySelector('[data-fail-msg]').textContent = err.message;
+          showStep(modal, 'failed');
         }
-      } catch (err) {
-        if (depPollAbort) return;
-        if (refId) { TxStore.update(refId, { status:'FAILED' }); updateTxRow(refId, 'FAILED'); }
-        document.getElementById('dep-fail-msg').textContent = err.message;
-        showStep('dep', 'failed');
-      }
-    });
+      });
 
-    // ── WITHDRAW FLOW ─────────────────────────────────────────────────────────
-    const withdrawModal = document.getElementById('withdraw-modal');
-
-    function openWithdraw()  { withdrawModal.classList.remove('hidden'); showStep('wdr','form'); }
-    function closeWithdraw() { withdrawModal.classList.add('hidden'); }
-
-    document.getElementById('withdraw-btn').addEventListener('click', openWithdraw);
-    document.getElementById('withdraw-close').addEventListener('click', closeWithdraw);
-    document.getElementById('withdraw-cancel').addEventListener('click', closeWithdraw);
-    withdrawModal.addEventListener('click', e => { if (e.target === withdrawModal) closeWithdraw(); });
-
-    document.getElementById('wdr-done').addEventListener('click', () => {
-      closeWithdraw();
-      loadAccountSummary();
-    });
-    document.getElementById('wdr-retry').addEventListener('click', () => showStep('wdr', 'form'));
-    document.getElementById('wdr-fail-close').addEventListener('click', closeWithdraw);
-
-    // Live confirm banner updates as user fills in fields
-    function refreshWdrBanner() {
-      const rawAmt   = document.getElementById('withdraw-amount').value.trim();
-      const rawPhone = document.getElementById('withdraw-phone').value.trim();
-      const banner   = document.getElementById('wdr-confirm-banner');
-      const amt      = validateAmount(rawAmt);
-      const phone    = validateMsisdn(rawPhone);
-      if (amt && phone) {
-        document.getElementById('wdr-confirm-amount').textContent = fmt(amt);
-        document.getElementById('wdr-confirm-phone').textContent  = `+${phone}`;
-        banner.classList.remove('hidden');
-      } else {
-        banner.classList.add('hidden');
-      }
+      Modal.open(modal);
     }
-    document.getElementById('withdraw-amount').addEventListener('input', refreshWdrBanner);
-    document.getElementById('withdraw-phone').addEventListener('input',  refreshWdrBanner);
 
-    document.getElementById('withdraw-confirm').addEventListener('click', async () => {
-      const rawAmount = document.getElementById('withdraw-amount').value.trim();
-      const rawPhone  = document.getElementById('withdraw-phone').value.trim();
-      const errEl     = document.getElementById('withdraw-error');
-      hideErr(errEl);
+    // ══════════════════════════════════════════════════════════════════════════
+    // ── WITHDRAW MODAL ────────────────────────────────────────────────────────
+    // ══════════════════════════════════════════════════════════════════════════
+    function openWithdrawModal() {
+      const modal = buildModal('withdraw-modal', `
+        <!-- STEP: form -->
+        <div data-step="form" style="display:flex" class="flex-col gap-4 p-6">
+          <div class="flex items-center justify-between">
+            <h3 class="font-headline-sm text-on-surface">Withdraw via MoMo</h3>
+            <button data-close class="w-8 h-8 rounded-full bg-surface-container flex items-center justify-center active:scale-90 transition-transform">
+              <span class="material-symbols-outlined text-[18px] text-on-surface-variant">close</span>
+            </button>
+          </div>
+          <p class="font-body-md text-on-surface-variant text-sm leading-relaxed">
+            Funds are sent directly to the recipient's MTN MoMo wallet.
+          </p>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-sm text-on-surface-variant">Amount (ZAR)</span>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-md text-on-surface-variant pointer-events-none">R</span>
+              <input data-input="amount" type="number" min="1" step="0.01" placeholder="0.00"
+                class="w-full bg-surface-container rounded-xl pl-8 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
+            </div>
+          </label>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-sm text-on-surface-variant">Recipient MoMo Number</span>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-sm text-on-surface-variant pointer-events-none">+</span>
+              <input data-input="phone" type="tel" placeholder="27821234567"
+                class="w-full bg-surface-container rounded-xl pl-7 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-secondary/50"/>
+            </div>
+            <span class="font-label-sm text-on-surface-variant">International format — e.g. 27821234567</span>
+          </label>
+          <!-- Confirm banner -->
+          <div data-confirm-banner class="bg-secondary/8 border border-secondary/20 rounded-xl p-4 hidden">
+            <div class="flex items-center justify-between">
+              <div class="flex flex-col gap-0.5">
+                <span class="font-label-sm text-on-surface-variant">Sending</span>
+                <span data-confirm-amount class="font-headline-sm text-on-surface"></span>
+              </div>
+              <span class="material-symbols-outlined text-secondary text-[20px]">east</span>
+              <div class="flex flex-col gap-0.5 items-end">
+                <span class="font-label-sm text-on-surface-variant">To</span>
+                <span data-confirm-phone class="font-label-md text-on-surface font-mono"></span>
+              </div>
+            </div>
+          </div>
+          <p data-err class="font-label-sm text-error hidden"></p>
+          <div class="flex gap-3 pb-2">
+            <button data-cancel class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-xl active:scale-95 transition-transform">Cancel</button>
+            <button data-submit class="flex-1 bg-secondary text-on-secondary font-label-md py-3 rounded-xl active:scale-95 transition-transform flex items-center justify-center gap-2">
+              <span class="material-symbols-outlined text-[18px]">send</span> Send Money
+            </button>
+          </div>
+        </div>
 
-      // Validate
-      const amount = validateAmount(rawAmount);
-      if (!amount) { showErr(errEl, 'Please enter a valid amount (minimum R1).'); return; }
-      const phone = validateMsisdn(rawPhone);
-      if (!phone) { showErr(errEl, 'Please enter a valid international phone number, e.g. 27821234567.'); return; }
+        <!-- STEP: pending -->
+        <div data-step="pending" style="display:none" class="flex-col items-center gap-5 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-secondary/10 flex items-center justify-center relative">
+            <div class="absolute inset-0 rounded-full border-4 border-secondary/20 border-t-secondary animate-spin"></div>
+            <span class="material-symbols-outlined text-[36px] text-secondary">send</span>
+          </div>
+          <div class="flex flex-col items-center gap-2 text-center">
+            <h3 class="font-headline-sm text-on-surface">Sending Funds</h3>
+            <p class="font-body-md text-on-surface-variant">Your transfer is being processed by MTN MoMo.</p>
+          </div>
+          <div class="w-full bg-surface-container rounded-full h-1.5 overflow-hidden">
+            <div class="h-full bg-secondary rounded-full" style="animation:shimmer 1.8s infinite;background:linear-gradient(90deg,#1f5dae 25%,#4a82cc 50%,#1f5dae 75%);background-size:200% 100%"></div>
+          </div>
+          <p data-ref class="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1.5 rounded-full"></p>
+        </div>
 
-      // Step → Pending
-      showStep('wdr', 'pending');
-      document.getElementById('wdr-ref-display').textContent = '';
+        <!-- STEP: success -->
+        <div data-step="success" style="display:none" class="flex-col items-center gap-4 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-growth-green/15 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[52px] text-growth-green" style="font-variation-settings:'FILL' 1;">check_circle</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-center">
+            <h3 class="font-headline-sm text-on-surface">Transfer Successful!</h3>
+            <p data-success-msg class="font-body-md text-on-surface-variant"></p>
+          </div>
+          <p data-success-ref class="font-label-sm text-on-surface-variant bg-surface-container px-3 py-1.5 rounded-full"></p>
+          <button data-done class="w-full bg-secondary text-on-secondary font-label-md py-3 rounded-xl mt-2 active:scale-95 transition-transform">Done</button>
+        </div>
 
-      let refId = null;
-      try {
-        // 1. Initiate disbursement transfer
-        const body = {
-          amount,
-          currency:     'ZAR',
-          external_id:  `wdr-${Date.now()}`,
-          payer_message:'Kasi Capital withdrawal',
-          payee_note:   'Pool withdrawal',
-          payee: { partyIdType: 'MSISDN', partyId: phone },
-        };
-        const initData = await API.momoFetch(API.momo.transfer, { method: 'POST', body: JSON.stringify(body) });
-        refId = initData.reference_id;
-        document.getElementById('wdr-ref-display').textContent = `Ref: ${refId}`;
+        <!-- STEP: failed -->
+        <div data-step="failed" style="display:none" class="flex-col items-center gap-4 p-6 py-12">
+          <div class="w-20 h-20 rounded-full bg-error/10 flex items-center justify-center">
+            <span class="material-symbols-outlined text-[52px] text-error" style="font-variation-settings:'FILL' 1;">cancel</span>
+          </div>
+          <div class="flex flex-col items-center gap-1 text-center">
+            <h3 class="font-headline-sm text-on-surface">Transfer Failed</h3>
+            <p data-fail-msg class="font-body-md text-on-surface-variant">The transfer could not be completed.</p>
+          </div>
+          <div class="flex gap-3 w-full mt-2">
+            <button data-retry class="flex-1 bg-secondary text-on-secondary font-label-md py-3 rounded-xl active:scale-95 transition-transform">Try Again</button>
+            <button data-close class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-xl active:scale-95 transition-transform">Close</button>
+          </div>
+        </div>
+      `);
 
-        // Record PENDING
-        const tx = { type:'withdrawal', refId, amount, phone, status:'PENDING', ts: Date.now() };
-        TxStore.add(tx);
-        prependTx(tx);
+      const closeModal = () => Modal.close(modal);
+      modal.querySelectorAll('[data-close],[data-cancel]').forEach(b => b.addEventListener('click', closeModal));
+      modal.addEventListener('click', e => { if (e.target === modal) closeModal(); });
+      modal.querySelector('[data-retry]').addEventListener('click', () => showStep(modal, 'form'));
+      modal.querySelector('[data-done]').addEventListener('click', () => { closeModal(); loadAccountSummary(); });
 
-        // 2. Poll for final status
-        const result = await pollMomoStatus(API.momo.transferStatus(refId), {
-          interval: 4000, maxAttempts: 12,
-        });
-
-        const finalStatus = (result.status || '').toUpperCase();
-        TxStore.update(refId, { status: finalStatus });
-        updateTxRow(refId, finalStatus);
-
-        if (finalStatus === 'SUCCESSFUL') {
-          document.getElementById('wdr-success-msg').textContent = `${fmt(amount)} sent to +${phone}.`;
-          document.getElementById('wdr-success-ref').textContent = `Ref: ${refId}`;
-          showStep('wdr', 'success');
-          loadAccountSummary();
+      // Live confirm banner
+      const updateBanner = () => {
+        const amt   = validateAmount(modal.querySelector('[data-input="amount"]').value.trim());
+        const phone = validateMsisdn(modal.querySelector('[data-input="phone"]').value.trim());
+        const banner = modal.querySelector('[data-confirm-banner]');
+        if (amt && phone) {
+          modal.querySelector('[data-confirm-amount]').textContent = fmt(amt);
+          modal.querySelector('[data-confirm-phone]').textContent  = `+${phone}`;
+          banner.classList.remove('hidden');
         } else {
-          document.getElementById('wdr-fail-msg').textContent =
-            result.message || 'The transfer was declined. Please try again.';
-          showStep('wdr', 'failed');
+          banner.classList.add('hidden');
         }
-      } catch (err) {
-        if (refId) { TxStore.update(refId, { status:'FAILED' }); updateTxRow(refId, 'FAILED'); }
-        document.getElementById('wdr-fail-msg').textContent = err.message;
-        showStep('wdr', 'failed');
-      }
-    });
+      };
+      modal.querySelector('[data-input="amount"]').addEventListener('input', updateBanner);
+      modal.querySelector('[data-input="phone"]').addEventListener('input',  updateBanner);
+
+      modal.querySelector('[data-submit]').addEventListener('click', async () => {
+        const amtRaw   = modal.querySelector('[data-input="amount"]').value.trim();
+        const phoneRaw = modal.querySelector('[data-input="phone"]').value.trim();
+        const errEl    = modal.querySelector('[data-err]');
+        hideErr(errEl);
+
+        const amount = validateAmount(amtRaw);
+        if (!amount) { showErr(errEl, 'Please enter a valid amount (minimum R1).'); return; }
+        const phone = validateMsisdn(phoneRaw);
+        if (!phone)  { showErr(errEl, 'Enter a valid international number — e.g. 27821234567.'); return; }
+
+        showStep(modal, 'pending');
+
+        let refId = null;
+        try {
+          const resp = await API.momoFetch(API.momo.transfer, {
+            method: 'POST',
+            body: JSON.stringify({
+              amount,
+              currency:     'ZAR',
+              external_id:  `wdr-${Date.now()}`,
+              payer_message:'Kasi Capital withdrawal',
+              payee_note:   'Pool withdrawal',
+              payee: { partyIdType:'MSISDN', partyId: phone },
+            }),
+          });
+          refId = resp.reference_id;
+          modal.querySelector('[data-ref]').textContent = `Ref: ${refId}`;
+
+          const tx = { type:'withdrawal', refId, amount, phone, status:'PENDING', ts: Date.now() };
+          TxStore.add(tx);
+          prependTx(tx);
+
+          const result      = await pollMomoStatus(API.momo.transferStatus(refId));
+          const finalStatus = (result.status || '').toUpperCase();
+          TxStore.update(refId, { status: finalStatus });
+          updateTxRow(refId, finalStatus);
+
+          if (finalStatus === 'SUCCESSFUL') {
+            modal.querySelector('[data-success-msg]').textContent = `${fmt(amount)} sent to +${phone}.`;
+            modal.querySelector('[data-success-ref]').textContent = `Ref: ${refId}`;
+            showStep(modal, 'success');
+            loadAccountSummary();
+          } else {
+            modal.querySelector('[data-fail-msg]').textContent = result.message || 'Transfer was declined.';
+            showStep(modal, 'failed');
+          }
+        } catch (err) {
+          if (refId) { TxStore.update(refId, { status:'FAILED' }); updateTxRow(refId, 'FAILED'); }
+          modal.querySelector('[data-fail-msg]').textContent = err.message;
+          showStep(modal, 'failed');
+        }
+      });
+
+      Modal.open(modal);
+    }
+
+    // Wire top-level buttons
+    document.getElementById('deposit-btn').addEventListener('click',  openDepositModal);
+    document.getElementById('withdraw-btn').addEventListener('click', openWithdrawModal);
 
     // ── Boot ──────────────────────────────────────────────────────────────────
     loadAssets();
     loadAccountSummary();
-
-    // Restore any existing session transactions into the feed
     TxStore.all().forEach(tx => prependTx(tx));
   }
 });
