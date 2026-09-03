@@ -45,7 +45,6 @@ Router.register('welcome', {
         </div>
 
         <div class="relative z-10 bg-surface-white p-6 rounded-2xl shadow-lg w-full max-w-sm flex flex-col items-center">
-          <!-- Logo: text-based, "Kasi Capital" -->
           <div class="flex items-center gap-2 mb-6">
             <span class="flex items-center justify-center w-14 h-14 rounded-full bg-primary-container text-on-primary-container font-headline-md text-headline-md shadow-sm">K</span>
           </div>
@@ -84,6 +83,8 @@ Router.register('welcome', {
               </div>
             </div>
           </div>
+
+          <p class="font-label-sm text-error hidden w-full text-center mb-2" id="auth-error"></p>
         </div>
       </div>
 
@@ -103,9 +104,10 @@ Router.register('welcome', {
     </div>
   `,
   init: () => {
-    const menuButton = document.getElementById('menu-button');
+    // Language picker
+    const menuButton   = document.getElementById('menu-button');
     const dropdownMenu = document.getElementById('dropdown-menu');
-    const selectedLanguage = document.getElementById('selected-language');
+    const selectedLang = document.getElementById('selected-language');
     let isMenuOpen = false;
 
     menuButton.addEventListener('click', () => {
@@ -119,17 +121,17 @@ Router.register('welcome', {
       }
     });
 
-    document.querySelectorAll('.lang-option').forEach((option) => {
-      option.addEventListener('click', (e) => {
+    document.querySelectorAll('.lang-option').forEach(option => {
+      option.addEventListener('click', e => {
         e.preventDefault();
-        selectedLanguage.textContent = option.textContent;
+        selectedLang.textContent = option.textContent;
         isMenuOpen = false;
         dropdownMenu.classList.add('opacity-0');
         setTimeout(() => dropdownMenu.classList.add('hidden'), 200);
       });
     });
 
-    document.addEventListener('click', (event) => {
+    document.addEventListener('click', event => {
       if (!menuButton.contains(event.target) && !dropdownMenu.contains(event.target) && isMenuOpen) {
         isMenuOpen = false;
         dropdownMenu.classList.add('opacity-0');
@@ -137,7 +139,45 @@ Router.register('welcome', {
       }
     });
 
-    document.getElementById('verify-btn').addEventListener('click', () => Router.navigate('dashboard'));
-    document.getElementById('create-account-btn').addEventListener('click', () => Router.navigate('dashboard'));
+    // Auth flow: create test user → get token → create brokerage account → navigate
+    async function bootstrapSession(btn) {
+      const authError = document.getElementById('auth-error');
+      const originalHtml = btn.innerHTML;
+      btn.innerHTML = '<span class="material-symbols-outlined text-[18px] animate-spin">refresh</span> Connecting…';
+      btn.disabled = true;
+      authError.classList.add('hidden');
+
+      try {
+        // 1. Create a test user and get an API key
+        const userResp = await API.investFetch(API.invest.createUser, { method: 'POST' });
+        const apiKey   = userResp.api_key;
+
+        // 2. Exchange the API key for a bearer token
+        const tokenResp = await API.investFetch(API.invest.token, {
+          method: 'POST',
+          body:   JSON.stringify({ api_key: apiKey }),
+        });
+        sessionStorage.setItem('kasi_token', tokenResp.token);
+
+        // 3. Create a brokerage account (starts with R50,000 cash)
+        const acctResp = await API.investFetch(API.invest.accounts, { method: 'POST' });
+        sessionStorage.setItem('kasi_account_id', acctResp.account_id);
+
+        Router.navigate('dashboard');
+      } catch (err) {
+        // If the backend is unreachable, fall through to dashboard anyway
+        // so the UI remains usable with placeholder data
+        console.warn('Invest API bootstrap failed, continuing offline:', err.message);
+        authError.textContent = `Backend unreachable — continuing in offline mode.`;
+        authError.classList.remove('hidden');
+        setTimeout(() => Router.navigate('dashboard'), 1500);
+      } finally {
+        btn.innerHTML = originalHtml;
+        btn.disabled  = false;
+      }
+    }
+
+    document.getElementById('verify-btn').addEventListener('click', e => bootstrapSession(e.currentTarget));
+    document.getElementById('create-account-btn').addEventListener('click', e => bootstrapSession(e.currentTarget));
   }
 });
