@@ -4,6 +4,7 @@ const SEED_POOLS = {
   'static-1': {
     id: 'static-1',
     name: 'Khayelitsha Groceries',
+    kind: 'local',
     cadence: 'Monthly',
     perMemberRaw: 500,
     perMember: 'R500 / member',
@@ -18,6 +19,7 @@ const SEED_POOLS = {
   'static-2': {
     id: 'static-2',
     name: 'Soweto Investors Club',
+    kind: 'local',
     cadence: 'Weekly',
     perMemberRaw: 250,
     perMember: 'R250 / member',
@@ -32,6 +34,7 @@ const SEED_POOLS = {
   'static-3': {
     id: 'static-3',
     name: 'Mamelodi Education Fund',
+    kind: 'local',
     cadence: 'Monthly',
     perMemberRaw: 1000,
     perMember: 'R1000 / member',
@@ -276,17 +279,18 @@ Router.register('pool-detail', {
         <div class="flex flex-col items-center justify-center gap-4 p-8 min-h-[60vh]">
           <span class="material-symbols-outlined text-[64px] text-on-surface-variant">search_off</span>
           <p class="font-body-md text-on-surface-variant text-center">Pool not found.</p>
-          <button onclick="Router.navigate('local-pools')"
+          <button onclick="Router.back()"
             class="bg-primary-container text-on-primary-container font-label-md px-6 py-3 rounded-xl">
             Back to Pools
           </button>
         </div>`;
     }
 
-    const data     = generatePoolData(pool);
-    const fmtR     = n => `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
-    const fmtRDec  = n => `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
-    const progPct  = pool.goalRaw ? Math.min(100, Math.round((data.totalCollected / pool.goalRaw) * 100)) : pool.pct;
+    const data          = generatePoolData(pool);
+    const fmtR          = n => `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 0 })}`;
+    const fmtRDec       = n => `R ${Number(n).toLocaleString('en-ZA', { minimumFractionDigits: 2 })}`;
+    const progPct       = pool.goalRaw ? Math.min(100, Math.round((data.totalCollected / pool.goalRaw) * 100)) : pool.pct;
+    const isCrossBorder = pool.kind === 'cross-border';
 
     return `
       <div class="flex flex-col w-full pb-stack-lg">
@@ -295,14 +299,18 @@ Router.register('pool-detail', {
         <div class="bg-secondary mx-container-padding mt-stack-sm rounded-2xl p-5 relative overflow-hidden shadow-md">
           <div class="absolute -right-8 -top-8 w-40 h-40 bg-surface-white/10 rounded-full blur-2xl pointer-events-none"></div>
           <div class="absolute -left-4 -bottom-6 w-28 h-28 bg-primary-container/20 rounded-full blur-xl pointer-events-none"></div>
-          <button onclick="Router.navigate('local-pools')"
+          <button onclick="Router.back()"
             class="relative z-10 flex items-center gap-1 text-on-secondary/70 font-label-sm mb-3 active:opacity-70">
-            <span class="material-symbols-outlined text-[16px]">arrow_back_ios</span> All Pools
+            <span class="material-symbols-outlined text-[16px]">arrow_back_ios</span> ${isCrossBorder ? 'Cross-Border Pools' : 'All Pools'}
           </button>
           <div class="relative z-10 flex flex-col gap-1">
             <h1 class="font-headline-md text-on-secondary">${pool.name}</h1>
             ${pool.desc ? `<p class="font-body-md text-on-secondary/75 text-sm leading-snug mt-1">${pool.desc}</p>` : ''}
             <div class="flex items-center gap-2 mt-3 flex-wrap">
+              ${isCrossBorder ? `
+              <span class="inline-flex items-center gap-1 bg-surface-white/20 text-on-secondary font-label-sm px-3 py-1 rounded-full">
+                <span class="material-symbols-outlined text-[14px]">public</span> ${pool.region}
+              </span>` : ''}
               <span class="inline-flex items-center gap-1 bg-surface-white/20 text-on-secondary font-label-sm px-3 py-1 rounded-full">
                 <span class="material-symbols-outlined text-[14px]">calendar_month</span> ${pool.cadence}
               </span>
@@ -421,11 +429,13 @@ Router.register('pool-detail', {
           </div>
         </div>
 
-        <!-- Join / Leave CTA -->
+        <!-- Join / Donate CTA -->
         <div class="mx-container-padding mt-stack-md flex gap-3">
           <button id="join-pool-btn"
             class="flex-1 bg-primary text-on-primary font-label-md py-4 rounded-xl flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-sm">
-            <span class="material-symbols-outlined text-[20px]">group_add</span> Join Pool
+            ${isCrossBorder
+              ? `<span class="material-symbols-outlined text-[20px]">volunteer_activism</span> Donate`
+              : `<span class="material-symbols-outlined text-[20px]">group_add</span> Join Pool`}
           </button>
           <button id="share-pool-btn"
             class="w-14 h-14 bg-surface-white border border-border-soft text-on-surface-variant rounded-xl flex items-center justify-center active:scale-95 transition-transform shadow-sm">
@@ -433,7 +443,30 @@ Router.register('pool-detail', {
           </button>
         </div>
 
-      </div>`;
+      </div>
+
+      ${isCrossBorder ? `
+      <!-- Donate Modal — voluntary, user-chosen amount (no fixed contribution) -->
+      <div id="pd-donate-modal" class="hidden fixed inset-0 z-[100] flex items-end justify-center bg-black/40">
+        <div class="bg-surface-white w-full max-w-md rounded-t-2xl p-6 flex flex-col gap-4 shadow-xl">
+          <h3 class="font-headline-sm text-on-surface">Donate to ${pool.name}</h3>
+          <p class="font-body-md text-on-surface-variant">Choose whatever amount you'd like to contribute.</p>
+          <label class="flex flex-col gap-1">
+            <span class="font-label-sm text-on-surface-variant">Donation Amount (ZAR)</span>
+            <div class="relative">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 font-label-md text-on-surface-variant pointer-events-none">R</span>
+              <input id="pd-donate-amount" type="number" min="1" step="1" value="${pool.perMemberRaw || ''}"
+                class="w-full bg-surface-container rounded-lg pl-8 pr-4 py-3 font-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary/50"/>
+            </div>
+            <span class="font-label-sm text-on-surface-variant">Suggested: ${pool.perMember || ''}</span>
+          </label>
+          <p id="pd-donate-error" class="font-label-sm text-error hidden"></p>
+          <div class="flex gap-3">
+            <button id="pd-donate-cancel" class="flex-1 bg-surface-container text-on-surface font-label-md py-3 rounded-lg active:scale-95 transition-transform">Cancel</button>
+            <button id="pd-donate-confirm" class="flex-1 bg-primary text-on-primary font-label-md py-3 rounded-lg active:scale-95 transition-transform">Confirm Donation</button>
+          </div>
+        </div>
+      </div>` : ''}`;
   },
 
   init: (qp) => {
@@ -466,17 +499,53 @@ Router.register('pool-detail', {
       });
     });
 
-    // ── Join Pool button ─────────────────────────────────────────────────────
-    document.getElementById('join-pool-btn')?.addEventListener('click', () => {
-      showToast(`Join request sent for "${pool.name}"!`);
-      const btn = document.getElementById('join-pool-btn');
-      if (btn) {
-        btn.innerHTML = '<span class="material-symbols-outlined text-[20px]">check</span> Request Sent';
-        btn.disabled  = true;
-        btn.classList.replace('bg-primary','bg-surface-container');
-        btn.classList.replace('text-on-primary','text-on-surface-variant');
-      }
-    });
+    // ── Join Pool / Donate button ────────────────────────────────────────────
+    const isCrossBorder = pool.kind === 'cross-border';
+    const ctaBtn = document.getElementById('join-pool-btn');
+
+    if (isCrossBorder) {
+      // Cross-border pools: open the "choose your amount" donate modal.
+      const modal   = document.getElementById('pd-donate-modal');
+      const amount  = document.getElementById('pd-donate-amount');
+      const error   = document.getElementById('pd-donate-error');
+      const cancel  = document.getElementById('pd-donate-cancel');
+      const confirm = document.getElementById('pd-donate-confirm');
+
+      ctaBtn?.addEventListener('click', () => {
+        error.classList.add('hidden');
+        modal.classList.remove('hidden');
+      });
+      cancel?.addEventListener('click', () => modal.classList.add('hidden'));
+      modal?.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+
+      confirm?.addEventListener('click', () => {
+        const val = parseFloat(amount.value);
+        if (!val || val < 1) {
+          error.textContent = 'Please enter a donation amount.';
+          error.classList.remove('hidden');
+          return;
+        }
+        modal.classList.add('hidden');
+        showToast(`Thank you! R${Math.round(val).toLocaleString('en-ZA')} donated to "${pool.name}".`);
+        if (ctaBtn) {
+          ctaBtn.innerHTML = '<span class="material-symbols-outlined text-[20px]">check</span> Donated ✓';
+          ctaBtn.disabled  = true;
+          ctaBtn.classList.replace('bg-primary','bg-surface-container');
+          ctaBtn.classList.replace('text-on-primary','text-on-surface-variant');
+        }
+      });
+    } else {
+      // Local pools: unchanged "request to join" behaviour.
+      ctaBtn?.addEventListener('click', () => {
+        showToast(`Join request sent for "${pool.name}"!`);
+        if (ctaBtn) {
+          ctaBtn.innerHTML = '<span class="material-symbols-outlined text-[20px]">check</span> Request Sent';
+          ctaBtn.disabled  = true;
+          ctaBtn.classList.replace('bg-primary','bg-surface-container');
+          ctaBtn.classList.replace('text-on-primary','text-on-surface-variant');
+        }
+      });
+    }
 
     // ── Share button ─────────────────────────────────────────────────────────
     document.getElementById('share-pool-btn')?.addEventListener('click', () => {
