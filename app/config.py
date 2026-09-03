@@ -29,8 +29,15 @@ class Settings(BaseSettings):
 
     user_1_uuid: str = ""
 
-    # CORS
+    # CORS — comma-separated list of allowed origins
     cors_origins: str = "https://kasicapital.netlify.app,http://localhost:3000,http://localhost:5173"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        origins = [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+        if not origins:
+            origins = ["https://kasicapital.netlify.app"]
+        return origins
 
 
 @lru_cache
