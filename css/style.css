@@ -1,0 +1,36 @@
+body {
+  min-height: max(884px, 100dvh);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+.pt-safe { padding-top: env(safe-area-inset-top); }
+
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+.hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes popIn {
+  0% { opacity: 0; transform: translateY(10px) scale(0.95); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-pop-in {
+  animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+}
+
+/* Ripple used by the "Create a Pool" card */
+.ripple-effect {
+  position: absolute;
+  background: rgba(255,255,255,0.3);
+  border-radius: 9999px;
+  transform: scale(0);
+  animation: ripple-pop 0.5s cubic-bezier(0,0,0.2,1) forwards;
+  pointer-events: none;
+}
+@keyframes ripple-pop {
+  to { transform: scale(1); opacity: 0; }
+}

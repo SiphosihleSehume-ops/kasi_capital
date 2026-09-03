@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<title>Kasi Capital</title>
+<meta content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script id="tailwind-config">
+  tailwind.config = {
+    darkMode: "class",
+    theme: {
+      extend: {
+        colors: {
+          "inverse-on-surface": "#eff1f3", "surface-tint": "#745b00", "inverse-primary": "#f1c100",
+          "on-primary": "#ffffff", "outline-variant": "#d2c5ab", "tertiary": "#525c8a",
+          "background": "#f7f9fb", "surface-variant": "#e0e3e5", "stokvel-red": "#E31E24",
+          "surface-white": "#FFFFFF", "on-secondary-fixed": "#001b3e", "on-secondary-fixed-variant": "#00458d",
+          "on-tertiary": "#ffffff", "surface-container": "#eceef0", "outline": "#80765f",
+          "secondary-fixed": "#d6e3ff", "tertiary-fixed-dim": "#bac4f9", "on-error": "#ffffff",
+          "on-background": "#191c1e", "secondary-container": "#76a9ff", "on-tertiary-container": "#4e5886",
+          "primary-fixed": "#ffe08b", "border-soft": "#E2E8F0", "on-surface": "#191c1e",
+          "on-primary-container": "#6f5700", "primary": "#745b00", "secondary-fixed-dim": "#aac7ff",
+          "growth-green": "#22C55E", "surface-container-highest": "#e0e3e5", "surface-bright": "#f7f9fb",
+          "on-tertiary-fixed-variant": "#3a4471", "surface-container-low": "#f2f4f6", "tertiary-fixed": "#dde1ff",
+          "on-secondary": "#ffffff", "surface-container-high": "#e6e8ea", "on-primary-fixed": "#241a00",
+          "error-container": "#ffdad6", "secondary": "#1f5dae", "surface-container-lowest": "#ffffff",
+          "tertiary-container": "#c8d0ff", "on-error-container": "#93000a", "surface": "#f7f9fb",
+          "surface-dim": "#d8dadc", "on-primary-fixed-variant": "#584400", "on-surface-variant": "#4e4632",
+          "primary-container": "#ffcc00", "primary-fixed-dim": "#f1c100", "inverse-surface": "#2d3133",
+          "error": "#ba1a1a", "on-secondary-container": "#003c7c", "on-tertiary-fixed": "#0d1843"
+        },
+        borderRadius: { DEFAULT: "0.25rem", lg: "0.5rem", xl: "0.75rem", full: "9999px" },
+        spacing: { "stack-lg": "40px", "stack-sm": "12px", base: "8px", gutter: "16px", "container-padding": "20px", "stack-md": "24px" },
+        fontFamily: {
+          "body-lg": ["Outfit"], "headline-sm": ["Outfit"], "headline-md": ["Outfit"], "body-md": ["Outfit"],
+          "display-lg": ["Outfit"], "label-md": ["Outfit"], "label-sm": ["Outfit"], "display-lg-mobile": ["Outfit"]
+        }
+      }
+    }
+  };
+</script>
+<link rel="stylesheet" href="css/style.css"/>
+</head>
+<body class="bg-surface-container-low text-on-surface font-body-md min-h-screen flex flex-col">
+
+  <!-- Header (hidden on the welcome/onboarding screen) -->
+  <header id="app-header" class="fixed top-0 w-full z-50 bg-white/80 backdrop-blur-xl pt-safe shadow-[0_1px_8px_rgba(0,0,0,0.04)] hidden">
+    <div class="h-16 px-container-padding flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <span class="flex items-center justify-center w-8 h-8 rounded-lg bg-primary-container text-on-primary-container font-headline-sm text-headline-sm">K</span>
+        <div class="flex flex-col leading-none">
+          <span class="font-headline-sm text-headline-sm text-on-surface -mb-0.5">Kasi Capital</span>
+          <span id="header-page-title" class="font-label-sm text-label-sm text-secondary truncate max-w-[160px]">Dashboard</span>
+        </div>
+      </div>
+      <button id="profile-btn" aria-label="Profile" class="w-8 h-8 rounded-full bg-secondary-container flex items-center justify-center text-on-secondary-container border border-outline-variant">
+        <span class="material-symbols-outlined text-[18px]">person</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Page content mounts here -->
+  <main id="app-root" class="flex-1"></main>
+
+  <!-- Bottom nav (hidden on the welcome/onboarding screen) -->
+  <nav id="app-nav" class="fixed bottom-0 w-full z-50 bg-white/90 backdrop-blur-xl pb-safe shadow-[0_-1px_8px_rgba(0,0,0,0.04)] hidden">
+    <div class="flex justify-around items-center h-20 px-4">
+      <a class="nav-link flex flex-col items-center justify-center gap-1 w-14 h-14 text-on-surface-variant transition-colors" data-path="dashboard" href="#/dashboard">
+        <span class="material-symbols-outlined">dashboard</span><span class="text-[10px] font-label-sm">Home</span>
+      </a>
+      <a class="nav-link flex flex-col items-center justify-center gap-1 w-14 h-14 text-on-surface-variant transition-colors" data-path="local-pools" href="#/local-pools">
+        <span class="material-symbols-outlined">groups</span><span class="text-[10px] font-label-sm">Local</span>
+      </a>
+      <a class="nav-link flex flex-col items-center justify-center gap-1 w-14 h-14 text-on-surface-variant transition-colors" data-path="cross-border-pools" href="#/cross-border-pools">
+        <span class="material-symbols-outlined">public</span><span class="text-[10px] font-label-sm">Cross-Border</span>
+      </a>
+      <a class="nav-link flex flex-col items-center justify-center gap-1 w-14 h-14 text-on-surface-variant transition-colors" data-path="ai-coach" href="#/ai-coach">
+        <span class="material-symbols-outlined">psychology</span><span class="text-[10px] font-label-sm">Coach</span>
+      </a>
+      <a class="nav-link flex flex-col items-center justify-center gap-1 w-14 h-14 text-on-surface-variant transition-colors" data-path="profile" href="#/profile">
+        <span class="material-symbols-outlined">account_circle</span><span class="text-[10px] font-label-sm">Profile</span>
+      </a>
+    </div>
+  </nav>
+
+  <script src="js/router.js"></script>
+  <script src="js/pages/welcome.js"></script>
+  <script src="js/pages/dashboard.js"></script>
+  <script src="js/pages/localPools.js"></script>
+  <script src="js/pages/crossBorder.js"></script>
+  <script src="js/pages/aiCoach.js"></script>
+  <script src="js/pages/profile.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
