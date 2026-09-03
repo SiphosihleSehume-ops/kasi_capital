@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.kasi_env/
+.pytest_cache/
+
+# Environment & secrets (not baked into the image)
+.env
+.env.*
+!.env.example
+
+# Tests (not needed at runtime)
+tests/
+
+# OS / editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Git
+.git/
