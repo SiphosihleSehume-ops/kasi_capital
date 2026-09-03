@@ -1,8 +1,10 @@
 // ─── Pool store (session-scoped, shared with dashboard) ───────────────────────
-// PoolStore is defined in dashboard.js which loads first.
-// Guard so it's safe if page is loaded standalone.
+// PoolStore is defined in dashboard.js, which loads before this file.
+// Guarded with window.PoolStore (assignment, not a declaration) so it's still
+// safe if this page is ever loaded standalone, without colliding with the
+// `const PoolStore` in dashboard.js.
 if (typeof PoolStore === 'undefined') {
-  var PoolStore = (() => {
+  window.PoolStore = (() => {
     const KEY = 'kasi_pools';
     function all()  { try { return JSON.parse(sessionStorage.getItem(KEY) || '[]'); } catch { return []; } }
     function add(p) { const l = all(); l.unshift(p); sessionStorage.setItem(KEY, JSON.stringify(l)); }
